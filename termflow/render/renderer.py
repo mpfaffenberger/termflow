@@ -70,10 +70,7 @@ from termflow.render.list import get_bullet, render_list_item
 from termflow.render.style import RenderFeatures, RenderStyle
 from termflow.render.table import (
     TableRenderState,
-    render_table_bottom,
-    render_table_row,
-    render_table_separator,
-    render_table_top,
+    render_table_complete,
 )
 from termflow.render.text import text_wrap
 from termflow.syntax import Highlighter
@@ -137,6 +134,11 @@ class Renderer:
         self._list_ordered = False
         self._list_checked: bool | None = None  # For task lists
         self._in_paragraph = False
+
+        # Table buffering for proper border alignment
+        self._table_header: tuple[str, ...] | None = None
+        self._table_rows: list[tuple[str, ...]] = []
+        self._table_alignments: list[str] = []
 
     @staticmethod
     def _detect_width() -> int:
@@ -205,7 +207,10 @@ class Renderer:
                     parts.append(f" {grey}({token.url}){RESET}")
             elif t == InlineElement.IMAGE:
                 symbol_fg = fg_color(self.style.symbol)
-                parts.append(f"{symbol_fg}[🖼 {token.content}]{RESET}")
+                grey = fg_color(self.style.grey)
+                parts.append(f"{symbol_fg}[IMAGE: {token.content}]{RESET}")
+                if token.url:
+                    parts.append(f" {grey}({token.url}){RESET}")
             elif t == InlineElement.FOOTNOTE:
                 symbol_fg = fg_color(self.style.symbol)
                 parts.append(f"{symbol_fg}[{token.content}]{RESET}")
@@ -262,9 +267,10 @@ class Renderer:
 
         elif isinstance(event, ImageEvent):
             fg = fg_color(self.style.symbol)
-            self._write(f"{fg}[🖼 {event.alt}]{RESET}")
+            grey = fg_color(self.style.grey)
+            # Show as [IMAGE: alt text](url) - clearer than emoji
+            self._write(f"{fg}[IMAGE: {event.alt}]{RESET}")
             if event.url:
-                grey = fg_color(self.style.grey)
                 self._write(f" {grey}({event.url}){RESET}")
 
         elif isinstance(event, FootnoteEvent):
@@ -338,10 +344,7 @@ class Renderer:
             width = self._current_width()
 
             # Determine bullet
-            if self._list_checked is not None:
-                # Task list item - use checkbox
-                bullet = "☑" if self._list_checked else "☐"
-            elif self._list_ordered and self._list_number is not None:
+            if self._list_ordered and self._list_number is not None:
                 bullet = f"{self._list_number}."
             else:
                 bullet = get_bullet(self._list_depth)
@@ -358,6 +361,7 @@ class Renderer:
                 self.style,
                 is_ordered=self._list_ordered,
                 number=self._list_number,
+                checked=self._list_checked,
             ):
                 self._writeln(line)
 
@@ -374,53 +378,51 @@ class Renderer:
         elif isinstance(event, TableStartEvent):
             self.table_state.reset()
             self._table_started = True
+            self._table_header = None
+            self._table_rows = []
+            self._table_alignments = []
 
         elif isinstance(event, TableHeaderEvent):
             if not self._table_started:
                 self.table_state.reset()
                 self._table_started = True
+                self._table_rows = []
+                self._table_alignments = []
 
-            margin = self._margin()
-            width = self._current_width()
-
-            # First update widths
-            self.table_state.update_widths(event.cells)
-
-            # Render top border
-            self._writeln(render_table_top(self.table_state, margin, self.style))
-
-            # Render header row
-            for line in render_table_row(
-                list(event.cells), self.table_state, width, margin, self.style, is_header=True
-            ):
-                self._writeln(line)
+            # Buffer header for later rendering
+            self._table_header = event.cells
 
         elif isinstance(event, TableSeparatorEvent):
-            margin = self._margin()
-
-            # Update alignments
+            # Store alignments for later rendering
             if event.alignments:
-                self.table_state.set_alignments(list(event.alignments))
-
-            self._writeln(render_table_separator(self.table_state, margin, self.style))
-            self.table_state.end_header()
+                self._table_alignments = list(event.alignments)
 
         elif isinstance(event, TableRowEvent):
-            margin = self._margin()
-            width = self._current_width()
-
-            for line in render_table_row(
-                list(event.cells), self.table_state, width, margin, self.style, is_header=False
-            ):
-                self._writeln(line)
+            # Buffer row for later rendering
+            self._table_rows.append(event.cells)
 
         elif isinstance(event, TableEndEvent):
-            if self._table_started:
+            if self._table_started and self._table_header is not None:
                 margin = self._margin()
-                self._writeln(render_table_bottom(self.table_state, margin, self.style))
+                width = self._current_width()
 
+                # Render complete table with proper borders
+                for line in render_table_complete(
+                    list(self._table_header),
+                    [list(row) for row in self._table_rows],
+                    self._table_alignments,
+                    width,
+                    margin,
+                    self.style,
+                ):
+                    self._writeln(line)
+
+            # Reset table state
             self.table_state.reset()
             self._table_started = False
+            self._table_header = None
+            self._table_rows = []
+            self._table_alignments = []
 
         # === Blockquote Events ===
         elif isinstance(event, BlockquoteStartEvent):
@@ -525,6 +527,9 @@ class Renderer:
         """Reset renderer state."""
         self.table_state.reset()
         self._table_started = False
+        self._table_header = None
+        self._table_rows = []
+        self._table_alignments = []
         self._code_language = None
         self._code_buffer = ""
         self._in_blockquote = False

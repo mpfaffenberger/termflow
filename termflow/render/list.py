@@ -98,6 +98,11 @@ def get_ordered_bullet(number: int, depth: int) -> str:
     return style_fn(number)
 
 
+# Checkbox characters with better visibility
+CHECKBOX_CHECKED = "[✓]"  # [✓]
+CHECKBOX_UNCHECKED = "[ ]"
+
+
 def render_list_item(
     depth: int,
     bullet_char: str,
@@ -107,6 +112,7 @@ def render_list_item(
     style: RenderStyle,
     is_ordered: bool = False,
     number: int | None = None,
+    checked: bool | None = None,
 ) -> list[str]:
     """Render a list item.
 
@@ -119,22 +125,33 @@ def render_list_item(
         style: Render style
         is_ordered: Whether this is an ordered list
         number: Item number for ordered lists
+        checked: For task lists: True=checked, False=unchecked, None=not a task
 
     Returns:
         Rendered lines (may be multiple if wrapped).
     """
-    fg = fg_color(style.symbol)
-
     # Calculate indentation (2 spaces per depth level)
     indent = "  " * depth
 
-    # Format bullet
-    if is_ordered and number is not None:
+    # Format bullet based on type
+    if checked is not None:
+        # Task list item - use checkbox with appropriate color
+        if checked:
+            # Green checkmark for completed
+            green = fg_color("#50fa7b")  # Bright green
+            formatted_bullet = f"{green}{CHECKBOX_CHECKED}{RESET}"
+        else:
+            # Grey for unchecked
+            grey = fg_color(style.grey)
+            formatted_bullet = f"{grey}{CHECKBOX_UNCHECKED}{RESET}"
+    elif is_ordered and number is not None:
+        fg = fg_color(style.symbol)
         bullet = get_ordered_bullet(number, depth)
         # Right-align numbers for consistent look
         bullet = bullet.rjust(3)
         formatted_bullet = f"{fg}{bullet}{RESET}"
     else:
+        fg = fg_color(style.symbol)
         bullet = get_bullet(depth) if bullet_char == "•" else bullet_char
         formatted_bullet = f"{fg}{bullet}{RESET}"
 
