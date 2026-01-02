@@ -1,7 +1,7 @@
 """Heading rendering for H1-H6.
 
 Each heading level has a distinct visual style:
-- H1: Bold, centered, bright color
+- H1: Bold, left-justified, bright color
 - H2: Bold, bright color
 - H3: Bold, head color
 - H4: Bold, default color
@@ -45,20 +45,17 @@ def render_heading(
     lines: list[str] = []
 
     if level == 1:
-        # H1: Bold, centered, bright color, with decorative underline
+        # H1: Bold, left-justified, bright color, with decorative underline
         fg = fg_color(style.bright)
         text = f"{BOLD_ON}{fg}{content}{RESET}"
 
-        # Center the heading
-        text_len = visible_length(content)
-        padding = max(0, (width - text_len) // 2)
-        lines.append(f"{margin}{' ' * padding}{text}")
+        # Left-justify the heading
+        lines.append(f"{margin}{text}")
 
         # Add decorative underline
         underline_char = "═"
-        underline = underline_char * min(text_len + 4, width)
-        underline_padding = max(0, (width - len(underline)) // 2)
-        lines.append(f"{margin}{' ' * underline_padding}{fg}{underline}{RESET}")
+        underline = underline_char * min(visible_length(content) + 4, width)
+        lines.append(f"{margin}{fg}{underline}{RESET}")
 
     elif level == 2:
         # H2: Bold, bright color, with subtle underline
