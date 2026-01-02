@@ -430,8 +430,7 @@ class Renderer:
                 # Format inline content in all cells
                 formatted_header = [self._format_inline(cell) for cell in self._table_header]
                 formatted_rows = [
-                    [self._format_inline(cell) for cell in row]
-                    for row in self._table_rows
+                    [self._format_inline(cell) for cell in row] for row in self._table_rows
                 ]
 
                 # Render complete table with proper borders
