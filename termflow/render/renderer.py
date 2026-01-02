@@ -208,8 +208,8 @@ class Renderer:
             elif t == InlineElement.BOLD_ITALIC:
                 parts.append(f"{BOLD_ON}{ITALIC_ON}{token.content}{ITALIC_OFF}{BOLD_OFF}")
             elif t == InlineElement.CODE:
-                # Render inline code with dim styling (no background)
-                parts.append(f"{DIM_ON}`{token.content}`{DIM_OFF}")
+                # Render inline code with dim styling (no backticks, just styled content)
+                parts.append(f"{DIM_ON}{token.content}{DIM_OFF}")
             elif t == InlineElement.UNDERLINE:
                 parts.append(f"{UNDERLINE_ON}{token.content}{UNDERLINE_OFF}")
             elif t == InlineElement.STRIKEOUT:
@@ -254,8 +254,8 @@ class Renderer:
             self._render_inline_text(event.text)
 
         elif isinstance(event, InlineCodeEvent):
-            # Render inline code with dim styling (no background)
-            self._write(f"{DIM_ON}`{event.code}`{DIM_OFF}")
+            # Render inline code with dim styling (no backticks, just styled content)
+            self._write(f"{DIM_ON}{event.code}{DIM_OFF}")
 
         elif isinstance(event, BoldEvent):
             self._write(f"{BOLD_ON}{event.text}{BOLD_OFF}")
