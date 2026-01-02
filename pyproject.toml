@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "termflow"
+name = "termflow-md"
 version = "0.1.0"
 description = "A streaming markdown renderer for modern terminals"
 readme = "README.md"
@@ -53,10 +53,10 @@ dev = [
 tf = "termflow.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/your-username/termflow"
-Repository = "https://github.com/your-username/termflow"
-Documentation = "https://github.com/your-username/termflow#readme"
-Issues = "https://github.com/your-username/termflow/issues"
+Homepage = "https://github.com/mpfaffenberger/termflow"
+Repository = "https://github.com/mpfaffenberger/termflow"
+Documentation = "https://github.com/mpfaffenberger/termflow#readme"
+Issues = "https://github.com/mpfaffenberger/termflow/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["termflow"]
