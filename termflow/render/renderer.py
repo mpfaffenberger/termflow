@@ -104,6 +104,7 @@ class Renderer:
         style: RenderStyle | None = None,
         features: RenderFeatures | None = None,
         highlighter: Highlighter | None = None,
+        dim: bool = False,
     ) -> None:
         """Initialize the renderer.
 
@@ -113,12 +114,14 @@ class Renderer:
             style: Color/style configuration
             features: Feature flags
             highlighter: Syntax highlighter (created if not provided)
+            dim: If True, render all output in dim/faded style (for thinking blocks)
         """
         self.output = output or sys.stdout
         self.width = width or self._detect_width()
         self.style = style or RenderStyle()
         self.features = features or RenderFeatures()
         self.highlighter = highlighter or Highlighter()
+        self._dim = dim
 
         # Table state
         self.table_state = TableRenderState()
@@ -148,14 +151,30 @@ class Renderer:
         except OSError:
             return 80
 
+    def _dim_text(self, text: str) -> str:
+        """Apply dim styling to text, preserving it through RESET codes."""
+        if not self._dim or not text:
+            return text
+        # Replace RESET codes with RESET+DIM_ON so dim persists
+        # Also replace DIM_OFF (\x1b[22m) which is shared with BOLD_OFF
+        # This handles Pygments output and other styled content
+        dimmed = text.replace(RESET, f"{RESET}{DIM_ON}")
+        dimmed = dimmed.replace(DIM_OFF, f"{DIM_OFF}{DIM_ON}")
+        # Also handle \x1b[39m (default foreground) which Pygments uses
+        dimmed = dimmed.replace("\x1b[39m", f"\x1b[39m{DIM_ON}")
+        return f"{DIM_ON}{dimmed}"
+
     def _write(self, text: str) -> None:
         """Write text to output without newline."""
-        self.output.write(text)
+        self.output.write(self._dim_text(text) if self._dim else text)
         self.output.flush()
 
     def _writeln(self, text: str = "") -> None:
         """Write text to output with newline."""
-        self.output.write(text + "\n")
+        if self._dim and text:
+            self.output.write(f"{self._dim_text(text)}{RESET}\n")
+        else:
+            self.output.write(text + "\n")
         self.output.flush()
 
     def _margin(self) -> str:
@@ -522,6 +541,22 @@ class Renderer:
             style: New style configuration.
         """
         self.style = style
+
+    def set_dim(self, dim: bool) -> None:
+        """Enable or disable dim mode.
+
+        When dim mode is enabled, all output is rendered with faded/dim styling.
+        This is useful for rendering thinking blocks or secondary content.
+
+        Args:
+            dim: True to enable dim mode, False to disable.
+        """
+        self._dim = dim
+
+    @property
+    def dim(self) -> bool:
+        """Whether dim mode is enabled."""
+        return self._dim
 
     def reset(self) -> None:
         """Reset renderer state."""

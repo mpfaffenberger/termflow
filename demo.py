@@ -10,6 +10,7 @@ Usage:
     python demo.py              # defaults to test_document.md
     python demo.py --fast       # 2x speed
     python demo.py --slow       # 0.5x speed
+    python demo.py --dim        # dim/faded mode (for thinking blocks)
 """
 
 import random
@@ -65,6 +66,7 @@ def stream_file(
     filepath: Path,
     chars_per_chunk: tuple[int, int] = (4, 6),
     chunks_per_second: float = 15.0,
+    dim: bool = False,
 ) -> tuple[int, int]:
     """Stream a file through termflow with realistic LLM-like timing.
 
@@ -72,6 +74,7 @@ def stream_file(
         filepath: Path to markdown file to stream.
         chars_per_chunk: Min/max characters per chunk (randomized).
         chunks_per_second: How many chunks to emit per second.
+        dim: If True, render in dim/faded mode.
 
     Returns:
         Tuple of (total_chars, total_lines) processed.
@@ -80,7 +83,7 @@ def stream_file(
     delay = 1.0 / chunks_per_second
 
     parser = Parser()
-    renderer = Renderer()
+    renderer = Renderer(dim=dim)
 
     # Buffer for accumulating characters until we hit a newline
     line_buffer = ""
@@ -120,7 +123,7 @@ def stream_file(
     return total_chars, total_lines
 
 
-def print_intro(filepath: Path, speed: float) -> None:
+def print_intro(filepath: Path, speed: float, dim: bool = False) -> None:
     """Print a cute intro message."""
     print(LOGO)
 
@@ -130,12 +133,15 @@ def print_intro(filepath: Path, speed: float) -> None:
         2.0: f"{PINK}fast 🚀{RESET}",
     }.get(speed, f"{YELLOW}{speed}x{RESET}")
 
+    dim_label = f"{GREY}dim 🌙{RESET}" if dim else f"{GREEN}normal{RESET}"
+
     print(f"  {GREY}──────────────────────────────────────────────{RESET}")
     print()
     print(f"  {BOLD_ON}Streaming Demo{BOLD_OFF} {DIM_ON}- Simulating LLM output{DIM_OFF}")
     print()
     print(f"  {CYAN}▸{RESET} File: {YELLOW}{filepath.name}{RESET}")
     print(f"  {CYAN}▸{RESET} Speed: {speed_label}")
+    print(f"  {CYAN}▸{RESET} Style: {dim_label}")
     print(f"  {CYAN}▸{RESET} Press {PINK}Ctrl+C{RESET} to stop")
     print()
     print(f"  {GREY}──────────────────────────────────────────────{RESET}")
@@ -193,6 +199,7 @@ def main() -> int:
     # Parse arguments
     args = sys.argv[1:]
     speed = 1.0
+    dim = False
     filepath = Path("test_document.md")
 
     for arg in args:
@@ -200,6 +207,8 @@ def main() -> int:
             speed = 2.0
         elif arg == "--slow":
             speed = 0.5
+        elif arg == "--dim":
+            dim = True
         elif arg == "--help" or arg == "-h":
             print(__doc__)
             return 0
@@ -216,7 +225,7 @@ def main() -> int:
     chunks_per_second = base_chunks_per_second * speed
 
     # Show intro
-    print_intro(filepath, speed)
+    print_intro(filepath, speed, dim)
 
     # Run the demo
     start_time = time.time()
@@ -228,6 +237,7 @@ def main() -> int:
             filepath,
             chars_per_chunk=(4, 6),
             chunks_per_second=chunks_per_second,
+            dim=dim,
         )
         elapsed = time.time() - start_time
         print_outro(elapsed, total_chars, total_lines)
