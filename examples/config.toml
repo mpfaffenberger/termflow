@@ -1,0 +1,78 @@
+# Example termflow configuration
+# Copy to ~/.config/termflow/config.toml
+#
+# Or set TERMFLOW_CONFIG environment variable to point to this file:
+#   export TERMFLOW_CONFIG=/path/to/config.toml
+
+# Maximum terminal width (optional)
+# If not set, uses actual terminal width
+# Useful to cap width on very wide terminals
+max_width = 120
+
+# Syntax highlighting style (any Pygments style)
+# Run `tf --list-syntax-styles` to see all available styles
+# Popular choices: monokai, dracula, nord, github-dark, one-dark, gruvbox-dark
+syntax_style = "monokai"
+
+# Color scheme for markdown rendering
+# All colors are hex strings (#RRGGBB)
+[style]
+bright = "#87ceeb"   # H1, H2 headings - sky blue
+head = "#98fb98"     # H3 headings - pale green  
+symbol = "#dda0dd"   # Bullets, borders, markers - plum
+grey = "#808080"     # H6, dim text, think blocks
+dark = "#1a1a2e"     # Code block background
+mid = "#2d2d44"      # Table header background (reserved)
+light = "#3d3d5c"    # Light accent (reserved)
+link = "#6699cc"     # Link text color - steel blue
+error = "#ff6b6b"    # Error messages - coral red
+
+# Feature toggles
+[features]
+clipboard = true     # Copy code blocks to clipboard via OSC 52
+hyperlinks = true    # Make links clickable via OSC 8
+pretty_pad = true    # Show decorative borders on code blocks
+images = false       # Attempt image rendering (experimental)
+wrap_text = true     # Wrap long lines to terminal width
+
+
+# =============================================================================
+# Alternative Style Presets
+# =============================================================================
+# Uncomment one of these sections to use a preset theme
+
+# --- Dracula Theme ---
+# [style]
+# bright = "#bd93f9"   # Purple
+# head = "#50fa7b"     # Green  
+# symbol = "#ff79c6"   # Pink
+# grey = "#6272a4"     # Comment
+# dark = "#282a36"     # Background
+# mid = "#44475a"      # Current line
+# light = "#6272a4"    # Comment
+# link = "#8be9fd"     # Cyan
+# error = "#ff5555"    # Red
+
+# --- Nord Theme ---
+# [style]
+# bright = "#88c0d0"   # Frost
+# head = "#a3be8c"     # Aurora green
+# symbol = "#b48ead"   # Aurora purple
+# grey = "#4c566a"     # Polar night
+# dark = "#2e3440"     # Polar night
+# mid = "#3b4252"      # Polar night
+# light = "#434c5e"    # Polar night
+# link = "#81a1c1"     # Frost
+# error = "#bf616a"    # Aurora red
+
+# --- Gruvbox Theme ---
+# [style]
+# bright = "#fabd2f"   # Yellow
+# head = "#b8bb26"     # Green
+# symbol = "#d3869b"   # Purple
+# grey = "#928374"     # Grey
+# dark = "#1d2021"     # Dark0 hard
+# mid = "#282828"      # Dark0
+# light = "#3c3836"    # Dark1
+# link = "#83a598"     # Blue
+# error = "#fb4934"    # Red
