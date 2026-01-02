@@ -31,10 +31,10 @@ jobs:
         run: uv sync --dev
 
       - name: Lint with ruff
-        run: uv run ruff check .
+        run: uvx ruff check .
 
       - name: Format check with ruff
-        run: uv run ruff format --check .
+        run: uvx ruff format --check .
 
       - name: Type check with mypy
         run: uv run mypy termflow --ignore-missing-imports
