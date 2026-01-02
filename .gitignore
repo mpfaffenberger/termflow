@@ -84,8 +84,8 @@ dmypy.json
 # pyenv
 .python-version
 
-# uv
-uv.lock
+# uv cache
+.uv/
 
 # OS files
 .DS_Store
