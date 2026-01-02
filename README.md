@@ -42,7 +42,7 @@ uvx termflow
 ### Using pip
 
 ```bash
-pip install termflow
+pip install termflow-md
 ```
 
 ### From source

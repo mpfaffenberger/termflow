@@ -147,7 +147,7 @@ It's useful for:
 ### Ordered Lists (Nested)
 
 1. **Install termflow**
-   1. Using pip: `pip install termflow`
+   1. Using pip: `pip install termflow-md`
    2. Using uvx: `uvx termflow`
    3. From source:
       1. Clone the repository
