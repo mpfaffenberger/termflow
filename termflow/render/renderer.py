@@ -308,7 +308,9 @@ class Renderer:
         elif isinstance(event, HeadingEvent):
             margin = self._margin()
             width = self._current_width()
-            for line in render_heading(event.level, event.content, width, margin, self.style):
+            # Format inline content (bold, italic, code, etc.)
+            formatted_content = self._format_inline(event.content)
+            for line in render_heading(event.level, formatted_content, width, margin, self.style):
                 self._writeln(line)
 
         # === Code Block Events ===
@@ -425,10 +427,17 @@ class Renderer:
                 margin = self._margin()
                 width = self._current_width()
 
+                # Format inline content in all cells
+                formatted_header = [self._format_inline(cell) for cell in self._table_header]
+                formatted_rows = [
+                    [self._format_inline(cell) for cell in row]
+                    for row in self._table_rows
+                ]
+
                 # Render complete table with proper borders
                 for line in render_table_complete(
-                    list(self._table_header),
-                    [list(row) for row in self._table_rows],
+                    formatted_header,
+                    formatted_rows,
                     self._table_alignments,
                     width,
                     margin,
