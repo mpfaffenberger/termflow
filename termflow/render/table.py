@@ -75,14 +75,19 @@ class TableRenderState:
 
 
 def _align_cell(text: str, width: int, alignment: str) -> str:
-    """Align cell content within width."""
+    """Align cell content within width using visible length."""
     text = text.strip()
+    vis_len = visible_length(text)
+    pad = max(0, width - vis_len)
+
     if alignment == "center":
-        return text.center(width)
+        left = pad // 2
+        right = pad - left
+        return " " * left + text + " " * right
     elif alignment == "right":
-        return text.rjust(width)
+        return " " * pad + text
     else:  # left or none
-        return text.ljust(width)
+        return text + " " * pad
 
 
 def render_table_top(
