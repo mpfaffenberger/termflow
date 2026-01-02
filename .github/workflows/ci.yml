@@ -56,11 +56,8 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Install twine for checking
-        run: uv pip install twine --system
-
       - name: Check distribution
-        run: twine check dist/*
+        run: uvx twine check dist/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
