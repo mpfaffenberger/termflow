@@ -10,7 +10,10 @@ from __future__ import annotations
 import base64
 import os
 import sys
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from termflow.parser import Parser
 
 from termflow.ansi import (
     BOLD_OFF,
@@ -326,6 +329,7 @@ class Renderer:
                 # Passthrough mode: parse content as markdown
                 self._markdown_passthrough = True
                 from termflow.parser import Parser
+
                 self._nested_parser = Parser()
                 return  # Don't render code block chrome
 
