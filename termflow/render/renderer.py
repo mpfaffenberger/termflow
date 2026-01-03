@@ -130,6 +130,8 @@ class Renderer:
         # Rendering state
         self._code_language: str | None = None
         self._code_buffer: str = ""
+        self._markdown_passthrough = False  # For code blocks with no lang or markdown lang
+        self._nested_parser: Parser | None = None  # For parsing markdown inside code blocks
         self._in_blockquote = False
         self._blockquote_depth = 0
         self._list_depth = 0
@@ -318,6 +320,16 @@ class Renderer:
             self._code_language = event.language
             self._code_buffer = ""
 
+            # Check if this should be rendered as markdown (no language or markdown/md)
+            lang_lower = (event.language or "").lower()
+            if event.language is None or lang_lower in ("markdown", "md"):
+                # Passthrough mode: parse content as markdown
+                self._markdown_passthrough = True
+                from termflow.parser import Parser
+                self._nested_parser = Parser()
+                return  # Don't render code block chrome
+
+            self._markdown_passthrough = False
             margin = self._margin()
             width = self._current_width()
             for line in render_code_start(
@@ -326,6 +338,13 @@ class Renderer:
                 self._writeln(line)
 
         elif isinstance(event, CodeBlockLineEvent):
+            # If in markdown passthrough mode, parse and render as markdown
+            if self._markdown_passthrough and self._nested_parser is not None:
+                nested_events = self._nested_parser.parse_line(event.line)
+                for nested_event in nested_events:
+                    self.render(nested_event)
+                return
+
             # Accumulate code for clipboard
             if self._code_buffer:
                 self._code_buffer += "\n"
@@ -341,6 +360,17 @@ class Renderer:
             self._writeln(line)
 
         elif isinstance(event, CodeBlockEndEvent):
+            # If in markdown passthrough mode, finalize the nested parser
+            if self._markdown_passthrough and self._nested_parser is not None:
+                final_events = self._nested_parser.finalize()
+                for nested_event in final_events:
+                    self.render(nested_event)
+                self._nested_parser = None
+                self._markdown_passthrough = False
+                self._code_language = None
+                self._code_buffer = ""
+                return
+
             margin = self._margin()
             width = self._current_width()
             for line in render_code_end(width, margin, self.style, self.features.pretty_pad):
@@ -575,6 +605,8 @@ class Renderer:
         self._table_alignments = []
         self._code_language = None
         self._code_buffer = ""
+        self._markdown_passthrough = False
+        self._nested_parser = None
         self._in_blockquote = False
         self._blockquote_depth = 0
         self._list_depth = 0
