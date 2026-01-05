@@ -112,11 +112,7 @@ def render_code_line(
         # Right border closes the visual box.
         content_width = width - 4  # space + content + space + right border
         padding = max(0, content_width - vis_len)
-        return (
-            f"{margin} "
-            f" {highlighted}{' ' * padding} "
-            f"{fg}{CODEPAD_VERT}{RESET}"
-        )
+        return f"{margin}  {highlighted}{' ' * padding} {fg}{CODEPAD_VERT}{RESET}"
     else:
         padding = max(0, width - vis_len)
         return f"{margin}{highlighted}{' ' * padding}"
