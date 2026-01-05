@@ -1,10 +1,13 @@
 """Code block rendering with box drawing borders.
 
 Renders code blocks with:
-- Unicode box drawing borders
+- Unicode box drawing borders (top/bottom frames, right-side border only)
 - Language label in the top border
 - Background coloring
 - Syntax highlighting integration
+
+Note: Left-side vertical borders are intentionally omitted to make copying
+code easier - users can select from the left edge without grabbing border chars.
 """
 
 from __future__ import annotations
@@ -105,11 +108,12 @@ def render_code_line(
     vis_len = visible_length(highlighted)
 
     if pretty_pad:
-        # Account for borders (2 chars) and spacing
-        content_width = width - 4  # borders + spaces
+        # No left border for easier copying! Just indent to align with box corners.
+        # Right border closes the visual box.
+        content_width = width - 4  # space + content + space + right border
         padding = max(0, content_width - vis_len)
         return (
-            f"{margin}{fg}{CODEPAD_VERT}{RESET}"
+            f"{margin} "
             f" {highlighted}{' ' * padding} "
             f"{fg}{CODEPAD_VERT}{RESET}"
         )
