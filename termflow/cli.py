@@ -121,6 +121,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--no-mermaid-graphics",
+        action="store_true",
+        help="Disable Mermaid diagram rendering (show as code)",
+    )
+
+    parser.add_argument(
         "-V",
         "--version",
         action="version",
@@ -281,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
         config.features.hyperlinks = False
     if args.no_pretty:
         config.features.pretty_pad = False
+    if args.no_mermaid_graphics:
+        config.features.mermaid_graphics = False
     if args.syntax_style:
         config.syntax_style = args.syntax_style
 

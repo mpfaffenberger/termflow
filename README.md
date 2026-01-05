@@ -25,6 +25,7 @@
 - **📊 Tables** - Full support for GitHub-flavored markdown tables
 - **📝 Lists** - Ordered, unordered, and nested lists with smart indentation
 - **💻 Code Blocks** - Fenced code blocks with language detection and clipboard support
+- **📊 Mermaid Diagrams** - Render flowcharts directly in the terminal
 - **💭 Think Blocks** - Special rendering for `<think>` tags (great for LLM chain-of-thought)
 - **🔗 Hyperlinks** - OSC 8 clickable links in supported terminals
 - **📋 Clipboard** - OSC 52 clipboard integration for code blocks
@@ -88,7 +89,7 @@ tf --list-syntax-styles
 ```
 usage: tf [-h] [-w N] [-c PATH] [--style {default,dracula,nord,gruvbox}]
           [--syntax-style NAME] [--list-syntax-styles] [--no-clipboard]
-          [--no-hyperlinks] [--no-pretty] [-V]
+          [--no-hyperlinks] [--no-pretty] [--no-mermaid-graphics] [-V]
           [file]
 
 options:
@@ -101,6 +102,7 @@ options:
   --no-clipboard        Disable OSC 52 clipboard for code blocks
   --no-hyperlinks       Disable OSC 8 hyperlinks
   --no-pretty           Disable pretty code block borders
+  --no-mermaid-graphics Disable Mermaid diagram rendering
   -V, --version         show program's version number and exit
 ```
 
@@ -256,6 +258,52 @@ Here's my answer based on my reasoning above.
 
 Think blocks are rendered with a distinct style to visually separate the
 model's reasoning from its final response.
+
+## 📊 Mermaid Diagram Support
+
+termflow can render Mermaid flowchart diagrams directly in your terminal!
+
+### Supported Syntax
+
+```mermaid
+graph LR
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Process]
+    B -->|No| D((End))
+    C --> D
+```
+
+### Features
+
+- **All directions**: LR, RL, TB, TD, BT
+- **Node shapes**: Rectangle `[]`, Rounded `()`, Diamond `{}`, Circle `(())`, Flag `>`
+- **Edge styles**: Solid `-->`, Dotted `-.->`, Thick `==>`
+- **Edge labels**: `-->|label|`
+
+### Terminal Support
+
+| Terminal | Rendering Quality |
+|----------|-------------------|
+| Kitty | ⭐⭐⭐ Native graphics |
+| iTerm2 | ⭐⭐⭐ Native graphics |
+| WezTerm | ⭐⭐⭐ Native graphics |
+| Windows Terminal | ⭐⭐ Unicode block art |
+| VS Code Terminal | ⭐⭐ Unicode block art |
+| Basic terminals | ⭐ Styled code fallback |
+
+### Configuration
+
+```toml
+# ~/.config/termflow/config.toml
+[features]
+mermaid_graphics = true  # Set to false to always show code
+```
+
+Or via CLI:
+```bash
+# Disable mermaid graphics
+tf --no-mermaid-graphics document.md
+```
 
 ## 🦀 Origin
 

@@ -135,6 +135,7 @@ class RenderFeatures:
         hyperlinks: Enable OSC 8 hyperlinks
         images: Attempt to render images (Kitty/iTerm2 protocol)
         wrap_text: Wrap long lines to terminal width
+        mermaid_graphics: Render mermaid diagrams as terminal graphics
     """
 
     clipboard: bool = True
@@ -143,3 +144,4 @@ class RenderFeatures:
     hyperlinks: bool = True
     images: bool = False
     wrap_text: bool = True
+    mermaid_graphics: bool = True
