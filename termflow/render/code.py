@@ -94,7 +94,7 @@ def render_code_line(
     Returns:
         Formatted code line.
     """
-    fg = fg_color(style.symbol)
+    fg_color(style.symbol)
 
     # Calculate visible length and padding
     vis_len = visible_length(highlighted)
