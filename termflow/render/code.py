@@ -1,13 +1,13 @@
-"""Code block rendering with box drawing borders.
+"""Code block rendering with simple horizontal separators.
 
 Renders code blocks with:
-- Unicode box drawing borders (top/bottom frames, right-side border only)
+- Simple horizontal line separators (top/bottom)
 - Language label in the top border
 - Background coloring
 - Syntax highlighting integration
 
-Note: Left-side vertical borders are intentionally omitted to make copying
-code easier - users can select from the left edge without grabbing border chars.
+Note: Box corners and side borders are intentionally omitted to make copying
+code easier - users can select code without grabbing any border characters.
 """
 
 from __future__ import annotations
@@ -23,12 +23,7 @@ if TYPE_CHECKING:
 # Box Drawing Characters
 # =============================================================================
 
-CODEPAD_TOP_LEFT = "╭"
-CODEPAD_TOP_RIGHT = "╮"
-CODEPAD_BOTTOM_LEFT = "╰"
-CODEPAD_BOTTOM_RIGHT = "╯"
 CODEPAD_HORIZ = "─"
-CODEPAD_VERT = "│"
 
 
 def render_code_start(
@@ -63,19 +58,16 @@ def render_code_start(
 
     # Calculate border lengths
     label_len = len(lang_label)
-    inner_width = width - 2  # -2 for corners
+    inner_width = width  # full width, no corners
 
     if label_len > 0:
-        # Put label on the right side
-        left_border_len = inner_width - label_len
-        left_border = CODEPAD_HORIZ * max(0, left_border_len)
-        top_line = (
-            f"{margin}{fg}{CODEPAD_TOP_LEFT}{left_border}"
-            f"{grey}{lang_label}{fg}{CODEPAD_TOP_RIGHT}{RESET}"
-        )
+        # Put label on the left side
+        right_border_len = inner_width - label_len
+        right_border = CODEPAD_HORIZ * max(0, right_border_len)
+        top_line = f"{margin}{grey}{lang_label}{fg}{right_border}{RESET}"
     else:
         border = CODEPAD_HORIZ * inner_width
-        top_line = f"{margin}{fg}{CODEPAD_TOP_LEFT}{border}{CODEPAD_TOP_RIGHT}{RESET}"
+        top_line = f"{margin}{fg}{border}{RESET}"
 
     lines.append(top_line)
     return lines
@@ -108,11 +100,10 @@ def render_code_line(
     vis_len = visible_length(highlighted)
 
     if pretty_pad:
-        # No left border for easier copying! Just indent to align with box corners.
-        # Right border closes the visual box.
-        content_width = width - 4  # space + content + space + right border
+        # No side borders for clean copy-paste! Just the code.
+        content_width = width
         padding = max(0, content_width - vis_len)
-        return f"{margin}  {highlighted}{' ' * padding} {fg}{CODEPAD_VERT}{RESET}"
+        return f"{margin}{highlighted}{' ' * padding}"
     else:
         padding = max(0, width - vis_len)
         return f"{margin}{highlighted}{' ' * padding}"
@@ -141,10 +132,9 @@ def render_code_end(
         return lines
 
     fg = fg_color(style.symbol)
-    inner_width = width - 2
-    border = CODEPAD_HORIZ * inner_width
+    border = CODEPAD_HORIZ * width
 
-    lines.append(f"{margin}{fg}{CODEPAD_BOTTOM_LEFT}{border}{CODEPAD_BOTTOM_RIGHT}{RESET}")
+    lines.append(f"{margin}{fg}{border}{RESET}")
     return lines
 
 

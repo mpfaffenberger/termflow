@@ -23,12 +23,7 @@ Example:
 """
 
 from termflow.render.code import (
-    CODEPAD_BOTTOM_LEFT,
-    CODEPAD_BOTTOM_RIGHT,
     CODEPAD_HORIZ,
-    CODEPAD_TOP_LEFT,
-    CODEPAD_TOP_RIGHT,
-    CODEPAD_VERT,
     render_code_block,
     render_code_end,
     render_code_line,
@@ -81,12 +76,7 @@ __all__ = [
     # List
     "BULLETS",
     # Code
-    "CODEPAD_BOTTOM_LEFT",
-    "CODEPAD_BOTTOM_RIGHT",
     "CODEPAD_HORIZ",
-    "CODEPAD_TOP_LEFT",
-    "CODEPAD_TOP_RIGHT",
-    "CODEPAD_VERT",
     # Table
     "TABLE_BOTTOM_LEFT",
     "TABLE_BOTTOM_RIGHT",
