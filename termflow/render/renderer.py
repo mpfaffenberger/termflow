@@ -70,6 +70,12 @@ from termflow.parser.events import (
 from termflow.render.code import render_code_end, render_code_line, render_code_start
 from termflow.render.heading import render_heading
 from termflow.render.list import get_bullet, render_list_item
+from termflow.render.mermaid import (
+    MermaidParseError,
+    RenderConfig as MermaidRenderConfig,
+    is_mermaid_flowchart,
+    render_mermaid_to_terminal,
+)
 from termflow.render.style import RenderFeatures, RenderStyle
 from termflow.render.table import (
     TableRenderState,
@@ -108,6 +114,7 @@ class Renderer:
         features: RenderFeatures | None = None,
         highlighter: Highlighter | None = None,
         dim: bool = False,
+        mermaid_render_config: MermaidRenderConfig | None = None,
     ) -> None:
         """Initialize the renderer.
 
@@ -118,6 +125,7 @@ class Renderer:
             features: Feature flags
             highlighter: Syntax highlighter (created if not provided)
             dim: If True, render all output in dim/faded style (for thinking blocks)
+            mermaid_render_config: Configuration for mermaid diagram rendering
         """
         self.output = output or sys.stdout
         self.width = width or self._detect_width()
@@ -125,6 +133,7 @@ class Renderer:
         self.features = features or RenderFeatures()
         self.highlighter = highlighter or Highlighter()
         self._dim = dim
+        self.mermaid_render_config = mermaid_render_config
 
         # Table state
         self.table_state = TableRenderState()
@@ -147,6 +156,10 @@ class Renderer:
         self._table_header: tuple[str, ...] | None = None
         self._table_rows: list[tuple[str, ...]] = []
         self._table_alignments: list[str] = []
+
+        # Mermaid diagram rendering state
+        self._mermaid_mode: bool = False
+        self._mermaid_buffer: list[str] = []
 
     @staticmethod
     def _detect_width() -> int:
@@ -333,7 +346,14 @@ class Renderer:
                 self._nested_parser = Parser()
                 return  # Don't render code block chrome
 
+            # Check if this is a mermaid diagram
+            if lang_lower == "mermaid" and self.features.mermaid_graphics:
+                self._mermaid_mode = True
+                self._mermaid_buffer = []
+                return  # Don't render code block chrome yet
+
             self._markdown_passthrough = False
+            self._mermaid_mode = False
             margin = self._margin()
             width = self._current_width()
             for line in render_code_start(
@@ -347,6 +367,11 @@ class Renderer:
                 nested_events = self._nested_parser.parse_line(event.line)
                 for nested_event in nested_events:
                     self.render(nested_event)
+                return
+
+            # If in mermaid mode, buffer the content
+            if self._mermaid_mode:
+                self._mermaid_buffer.append(event.line)
                 return
 
             # Accumulate code for clipboard
@@ -371,6 +396,29 @@ class Renderer:
                     self.render(nested_event)
                 self._nested_parser = None
                 self._markdown_passthrough = False
+                self._code_language = None
+                self._code_buffer = ""
+                return
+
+            # If in mermaid mode, attempt to render the diagram
+            if self._mermaid_mode:
+                self._mermaid_mode = False
+                code = "\n".join(self._mermaid_buffer)
+                self._mermaid_buffer = []
+
+                try:
+                    # Attempt to render mermaid diagram
+                    output = render_mermaid_to_terminal(
+                        code,
+                        width=self._current_width(),
+                        render_config=self.mermaid_render_config,
+                    )
+                    self._write(output)
+                    self._writeln()  # Ensure newline after diagram
+                except (MermaidParseError, Exception):
+                    # Fallback: render as styled code block
+                    self._render_mermaid_fallback(code)
+
                 self._code_language = None
                 self._code_buffer = ""
                 return
@@ -568,6 +616,46 @@ class Renderer:
         except Exception:
             pass  # Silently fail if clipboard doesn't work
 
+    def _render_mermaid_fallback(self, code: str) -> None:
+        """Render mermaid code as a styled code block (fallback).
+
+        Used when diagram rendering fails - displays the mermaid source
+        with syntax highlighting and a special indicator.
+
+        Args:
+            code: Mermaid source code to render.
+        """
+        margin = self._margin()
+        width = self._current_width()
+
+        # Render code block start with mermaid label and diagram indicator
+        for line in render_code_start(
+            "mermaid 📊", width, margin, self.style, self.features.pretty_pad
+        ):
+            self._writeln(line)
+
+        # Render each line with syntax highlighting
+        for code_line in code.splitlines():
+            # Accumulate for clipboard
+            if self._code_buffer:
+                self._code_buffer += "\n"
+            self._code_buffer += code_line
+
+            # Use simple highlighting (mermaid isn't in Pygments)
+            highlighted = self.highlighter.highlight_line(code_line, "text")
+            line = render_code_line(
+                code_line, highlighted, width, margin, self.style, self.features.pretty_pad
+            )
+            self._writeln(line)
+
+        # Render code block end
+        for line in render_code_end(width, margin, self.style, self.features.pretty_pad):
+            self._writeln(line)
+
+        # Clipboard integration
+        if self.features.clipboard and self._code_buffer:
+            self._copy_to_clipboard(self._code_buffer)
+
     def set_width(self, width: int) -> None:
         """Update the terminal width.
 
@@ -618,6 +706,8 @@ class Renderer:
         self._list_ordered = False
         self._list_checked = None
         self._in_paragraph = False
+        self._mermaid_mode = False
+        self._mermaid_buffer = []
 
 
 def render_markdown(

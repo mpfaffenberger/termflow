@@ -38,6 +38,8 @@ classifiers = [
 dependencies = [
     "pygments>=2.17.0",
     "wcwidth>=0.2.12",
+    "grandalf>=0.8",  # Graph layout engine for Mermaid diagrams
+    "Pillow>=10.0.0",  # Image rendering for Mermaid diagrams
 ]
 
 [project.optional-dependencies]
