@@ -9,10 +9,12 @@ Renders markdown tables with:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from termflow.ansi import BOLD_OFF, BOLD_ON, RESET, fg_color, visible_length
+from termflow.ansi.utils import wrap_ansi
 
 if TYPE_CHECKING:
     from termflow.render.style import RenderStyle
@@ -58,6 +60,57 @@ class TableRenderState:
                 self.column_widths.append(width)
             else:
                 self.column_widths[i] = max(self.column_widths[i], width)
+
+    def cap_widths_to_max(self, margin_width: int) -> None:
+        """Cap column widths to fit within TERMFLOW_MAX_TABLE_WIDTH.
+
+        Reads the env var and redistributes column space proportionally
+        if the table would exceed the max width.
+        """
+        max_table_width = os.environ.get("TERMFLOW_MAX_TABLE_WIDTH")
+        if not max_table_width:
+            return
+        try:
+            max_w = int(max_table_width)
+        except ValueError:
+            return
+
+        num_cols = len(self.column_widths)
+        if num_cols == 0:
+            return
+
+        # overhead: margin + outer borders (2) + cell padding (3 per col: " X ") + inner borders
+        # Each cell has " content " = +2, and there are (num_cols - 1) inner borders
+        overhead = margin_width + 2 + (num_cols * 2) + (num_cols - 1)
+        available = max_w - overhead
+
+        if available <= num_cols:
+            return  # Can't shrink further
+
+        total_content = sum(self.column_widths)
+        if total_content <= available:
+            return  # Already fits
+
+        # Proportionally redistribute
+        min_col = 8  # Minimum column width
+        new_widths = []
+        for w in self.column_widths:
+            ratio = w / total_content
+            new_w = max(min_col, int(available * ratio))
+            new_widths.append(new_w)
+
+        # Adjust rounding errors
+        diff = available - sum(new_widths)
+        if diff > 0:
+            # Give extra space to the widest column
+            idx = new_widths.index(max(new_widths))
+            new_widths[idx] += diff
+        elif diff < 0:
+            # Shrink the widest column
+            idx = new_widths.index(max(new_widths))
+            new_widths[idx] = max(min_col, new_widths[idx] + diff)
+
+        self.column_widths = new_widths
 
     def set_alignments(self, alignments: list[str] | tuple[str, ...]) -> None:
         """Set column alignments."""
@@ -106,6 +159,15 @@ def render_table_top(
     return f"{margin}{fg}{TABLE_TOP_LEFT}{border}{TABLE_TOP_RIGHT}{RESET}"
 
 
+def _wrap_cell(text: str, width: int) -> list[str]:
+    """Wrap cell text to fit within width, returning lines."""
+    text = text.strip()
+    if visible_length(text) <= width:
+        return [text]
+    wrapped = wrap_ansi(text, width)
+    return wrapped if wrapped else [text]
+
+
 def render_table_row(
     cells: list[str] | tuple[str, ...],
     state: TableRenderState,
@@ -114,12 +176,12 @@ def render_table_row(
     style: RenderStyle,
     is_header: bool = False,
 ) -> list[str]:
-    """Render a table row.
+    """Render a table row with text wrapping support.
 
     Args:
         cells: Cell contents
         state: Table rendering state
-        width: Available width
+        _width: Available width
         margin: Left margin
         style: Render style
         is_header: Whether this is a header row
@@ -127,32 +189,36 @@ def render_table_row(
     Returns:
         Rendered lines.
     """
-    # Update column widths
-    state.update_widths(cells)
-
     fg = fg_color(style.symbol)
     lines: list[str] = []
 
-    # Build the row content
-    cell_parts = []
+    # Wrap each cell's content to its column width
+    wrapped_cells: list[list[str]] = []
     for i, cell in enumerate(cells):
         col_width = state.column_widths[i] if i < len(state.column_widths) else len(str(cell))
-        alignment = state.get_alignment(i)
-        aligned = _align_cell(str(cell), col_width, alignment)
+        wrapped_cells.append(_wrap_cell(str(cell), col_width))
 
-        if is_header:
-            # Bold header cells
-            cell_parts.append(f"{BOLD_ON}{aligned}{BOLD_OFF}")
-        else:
-            cell_parts.append(aligned)
+    # Number of visual lines this row needs
+    max_lines = max((len(wc) for wc in wrapped_cells), default=1)
 
-    # Join cells with vertical bars
-    row_content = f" {fg}{TABLE_VERT}{RESET} ".join(cell_parts)
-    row = f"{margin}{fg}{TABLE_VERT}{RESET} {row_content} {fg}{TABLE_VERT}{RESET}"
+    for line_idx in range(max_lines):
+        cell_parts = []
+        for i, wc in enumerate(wrapped_cells):
+            col_width = state.column_widths[i] if i < len(state.column_widths) else 10
+            alignment = state.get_alignment(i)
+            text = wc[line_idx] if line_idx < len(wc) else ""
+            aligned = _align_cell(text, col_width, alignment)
 
-    lines.append(row)
+            if is_header:
+                cell_parts.append(f"{BOLD_ON}{aligned}{BOLD_OFF}")
+            else:
+                cell_parts.append(aligned)
+
+        row_content = f" {fg}{TABLE_VERT}{RESET} ".join(cell_parts)
+        row = f"{margin}{fg}{TABLE_VERT}{RESET} {row_content} {fg}{TABLE_VERT}{RESET}"
+        lines.append(row)
+
     state.row_count += 1
-
     return lines
 
 
@@ -219,6 +285,9 @@ def render_table_complete(
         state.update_widths(row)
 
     state.set_alignments(alignments)
+
+    # Cap widths if TERMFLOW_MAX_TABLE_WIDTH is set
+    state.cap_widths_to_max(visible_length(margin))
 
     # Render
     lines: list[str] = []
