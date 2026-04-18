@@ -61,9 +61,7 @@ class TableRenderState:
             else:
                 self.column_widths[i] = max(self.column_widths[i], width)
 
-    def cap_widths_to_max(
-        self, margin_width: int, available_width: int | None = None
-    ) -> None:
+    def cap_widths_to_max(self, margin_width: int, available_width: int | None = None) -> None:
         """Cap column widths so the rendered table fits horizontally.
 
         The effective cap is the minimum of ``available_width`` (the total
