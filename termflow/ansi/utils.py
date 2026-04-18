@@ -227,10 +227,12 @@ def _get_active_codes(segments: list[str]) -> str:
 
 
 def wrap_ansi(text: str, width: int) -> list[str]:
-    """Wrap text to width, preserving ANSI codes across line breaks.
+    """Wrap text to width at word boundaries, preserving ANSI codes.
 
-    This is critical for proper text rendering! When a line is wrapped,
-    any active ANSI styles are:
+    Word boundaries (spaces/tabs) are preferred; a word only gets
+    character-split if it is, by itself, longer than ``width``.
+
+    When a line is wrapped, any active ANSI SGR styles are:
     1. Terminated at the end of each line with RESET
     2. Re-applied at the start of the next line
 
@@ -249,50 +251,85 @@ def wrap_ansi(text: str, width: int) -> list[str]:
         return [text] if text else []
 
     segments = split_ansi(text)
+
     lines: list[str] = []
     current_line: list[str] = []
     current_width = 0
-    active_codes: list[str] = []  # Track currently active ANSI codes
+    active_codes: list[str] = []  # Currently active SGR codes
+
+    # Buffered "word": visible chars (plus ANSI codes that appear inside it)
+    word_parts: list[str] = []
+    word_width = 0
+
+    def end_line() -> None:
+        nonlocal current_line, current_width
+        if active_codes:
+            current_line.append(RESET)
+        lines.append("".join(current_line))
+        current_line = list(active_codes)
+        current_width = 0
+
+    def emit_word() -> None:
+        """Place the buffered word on the output, wrapping if needed."""
+        nonlocal current_line, current_width, word_parts, word_width
+        if not word_parts:
+            return
+        if word_width == 0:
+            # Only ANSI codes buffered — append in place; no wrapping needed
+            current_line.extend(word_parts)
+            word_parts = []
+            return
+
+        if current_width + word_width <= width:
+            current_line.extend(word_parts)
+            current_width += word_width
+        elif word_width <= width and current_width > 0:
+            end_line()
+            current_line.extend(word_parts)
+            current_width = word_width
+        else:
+            # Word is wider than the line — fall back to character wrapping.
+            for part in word_parts:
+                if is_ansi_code(part):
+                    current_line.append(part)
+                    continue
+                for ch in part:
+                    cw = max(0, wcwidth(ch))
+                    if current_width + cw > width and current_width > 0:
+                        end_line()
+                    current_line.append(ch)
+                    current_width += cw
+
+        word_parts = []
+        word_width = 0
 
     for segment in segments:
         if is_ansi_code(segment):
-            # Track ANSI code state
             params = parse_sgr_params(segment)
             if params and 0 in params:
-                # Reset clears active codes
                 active_codes.clear()
             elif params:
                 active_codes.append(segment)
-            current_line.append(segment)
+            # Attach code to the current word so styling travels with it
+            # across a wrap boundary.
+            word_parts.append(segment)
             continue
 
-        # Process text segment character by character for proper width handling
-        i = 0
-        while i < len(segment):
-            char = segment[i]
-            char_width = max(0, wcwidth(char))
+        for ch in segment:
+            if ch == "\n":
+                emit_word()
+                end_line()
+            elif ch in (" ", "\t"):
+                emit_word()
+                # Preserve inter-word space if it fits; drop it at a wrap edge.
+                if current_width > 0 and current_width + 1 <= width:
+                    current_line.append(ch)
+                    current_width += 1
+            else:
+                word_parts.append(ch)
+                word_width += max(0, wcwidth(ch))
 
-            # Check if this character would exceed line width
-            if current_width + char_width > width and current_width > 0:
-                # Finish current line
-                if active_codes:
-                    current_line.append(RESET)
-                lines.append("".join(current_line))
-
-                # Start new line with active codes
-                current_line = list(active_codes)
-                current_width = 0
-
-            # Handle word wrapping at spaces
-            if char == " " and current_width + char_width > width:
-                i += 1
-                continue  # Skip the space at line boundary
-
-            current_line.append(char)
-            current_width += char_width
-            i += 1
-
-    # Don't forget the last line
+    emit_word()
     if current_line:
         lines.append("".join(current_line))
 

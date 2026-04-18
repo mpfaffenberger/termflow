@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-04-18
+
+### Fixed
+
+- `wrap_ansi` now wraps at word boundaries instead of chopping words
+  mid-character. A word is only character-wrapped when it is, by itself,
+  longer than the available width. This fixes ugly cell wrapping in
+  tables (e.g. "bananas" no longer becomes "bana / nas").
+
 ## [0.1.10] - 2026-04-18
 
 ### Fixed
