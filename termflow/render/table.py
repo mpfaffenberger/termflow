@@ -61,26 +61,35 @@ class TableRenderState:
             else:
                 self.column_widths[i] = max(self.column_widths[i], width)
 
-    def cap_widths_to_max(self, margin_width: int) -> None:
-        """Cap column widths to fit within TERMFLOW_MAX_TABLE_WIDTH.
+    def cap_widths_to_max(
+        self, margin_width: int, available_width: int | None = None
+    ) -> None:
+        """Cap column widths so the rendered table fits horizontally.
 
-        Reads the env var and redistributes column space proportionally
-        if the table would exceed the max width.
+        The effective cap is the minimum of ``available_width`` (the total
+        horizontal space available for the rendered table, including outer
+        margin) and ``TERMFLOW_MAX_TABLE_WIDTH`` (if set). Column widths are
+        redistributed proportionally when the table would overflow. Content
+        that no longer fits a cell will be wrapped at render time.
         """
-        max_table_width = os.environ.get("TERMFLOW_MAX_TABLE_WIDTH")
-        if not max_table_width:
-            return
-        try:
-            max_w = int(max_table_width)
-        except ValueError:
+        max_w: int | None = available_width
+        env_max = os.environ.get("TERMFLOW_MAX_TABLE_WIDTH")
+        if env_max:
+            try:
+                env_val = int(env_max)
+                max_w = min(max_w, env_val) if max_w is not None else env_val
+            except ValueError:
+                pass
+
+        if max_w is None:
             return
 
         num_cols = len(self.column_widths)
         if num_cols == 0:
             return
 
-        # overhead: margin + outer borders (2) + cell padding (3 per col: " X ") + inner borders
-        # Each cell has " content " = +2, and there are (num_cols - 1) inner borders
+        # overhead: margin + outer borders (2) + cell padding (2 per col: " X ")
+        # + inner borders (num_cols - 1)
         overhead = margin_width + 2 + (num_cols * 2) + (num_cols - 1)
         available = max_w - overhead
 
@@ -286,8 +295,11 @@ def render_table_complete(
 
     state.set_alignments(alignments)
 
-    # Cap widths if TERMFLOW_MAX_TABLE_WIDTH is set
-    state.cap_widths_to_max(visible_length(margin))
+    # Cap column widths so borders don't wrap past the terminal edge.
+    # ``width`` is the content budget from the renderer (already minus margin),
+    # so total available = width + margin_width.
+    margin_width = visible_length(margin)
+    state.cap_widths_to_max(margin_width, available_width=width + margin_width)
 
     # Render
     lines: list[str] = []

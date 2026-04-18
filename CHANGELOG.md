@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-04-18
+
+### Fixed
+
+- Tables now respect the terminal width by default — borders no longer wrap
+  past the terminal edge. Column widths are capped proportionally and cell
+  content wraps inside the cell instead. `TERMFLOW_MAX_TABLE_WIDTH` still
+  works as an optional tighter cap.
+
 ## [0.1.3] - 2025-05-25
 
 ### Fixed
