@@ -125,6 +125,23 @@ class TestLists:
         events = parser.parse_line("1. First item")
         assert len(events) > 0
 
+    def test_ordered_list_restarts_after_intervening_content(self):
+        parser = Parser()
+        markdown = """1. Item 1
+2. Item 2
+3. Item 3
+
+Some other content
+
+1. Item 1
+2. Item 2
+3. Item 3"""
+
+        events = parser.parse_document(markdown)
+        numbers = [event.number for event in events if isinstance(event, ListItemStartEvent)]
+
+        assert numbers == [1, 2, 3, 1, 2, 3]
+
     def test_nested_list(self):
         parser = Parser()
         parser.parse_line("- Parent")
