@@ -245,6 +245,29 @@ class TestMenuSearch:
         assert not result.cancelled
         assert result.item.label == "alpha"
 
+    def test_tall_preview_is_clamped_to_terminal_height(self):
+        # A preview taller than the screen must not push the title and
+        # list rows into scrollback (the frame would scroll and the menu
+        # would appear as a blank left column next to a floating preview).
+        tall = "\n".join(f"preview line {i}" for i in range(100))
+        _result, screen = run_menu(
+            [MenuItem("alpha"), MenuItem("beta")],
+            [Key.ESCAPE],
+            preview=lambda _item: tall,
+            size=lambda: (100, 20),
+        )
+        # Painted frame fits in 20 rows.
+        frame = screen.split("\x1b[H")[-1]
+        painted_rows = frame.count("\r\n")
+        assert painted_rows <= 20
+        # Title and list rows survive; the preview tail is what gets cut.
+        from termflow.ansi.utils import visible
+
+        text = visible(screen)
+        assert "alpha" in text
+        assert "preview line 0" in text
+        assert "preview line 99" not in text
+
     def test_custom_filter_fn(self):
         # Match against value, not label.
         result, _ = run_menu(

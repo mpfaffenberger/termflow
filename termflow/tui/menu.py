@@ -223,7 +223,7 @@ class Menu:
         return _truncate(line, width)
 
     def _frame(self) -> list[str]:
-        cols, _rows_avail = self._size()
+        cols, rows_avail = self._size()
         rows = self._filtered()
         self._clamp_cursor(rows)
         s = self._style
@@ -251,6 +251,13 @@ class Menu:
         if self._preview is not None and rows:
             preview_text = self._preview_text(rows[self._cursor][1])
             body = _two_columns(body, preview_text.splitlines(), list_width, cols)
+
+        # Clamp to the terminal height (header + body + blank + footer):
+        # a preview taller than the screen must not push the list and
+        # title into scrollback -- clip the body, keep the footer.
+        body_budget = max(1, rows_avail - len(lines) - 2)
+        if len(body) > body_budget:
+            body = body[:body_budget]
 
         lines.extend(body)
         lines.append("")

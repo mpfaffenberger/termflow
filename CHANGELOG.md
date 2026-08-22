@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-08-22
+
+### Fixed
+
+- Menu frames taller than the terminal (e.g. a tall preview pane) no
+  longer push the title and list rows into scrollback, which rendered
+  as a blank left column next to a floating preview. The body is now
+  clamped to the terminal height; the footer stays visible and the
+  preview tail is clipped.
+
 ## [0.2.4] - 2026-08-22
 
 ### Added
