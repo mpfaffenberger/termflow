@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-22
+
+### Fixed
+
+- `read_key` now reads straight from the file descriptor with `os.read`
+  on POSIX ttys. The previous `stream.read(1)` + `select()` combination
+  was a trap: `TextIOWrapper` slurped a whole escape-sequence burst into
+  its internal buffer while returning one char, `select()` then reported
+  nothing pending, and every arrow key parsed as a lone ESC — cancelling
+  the menu. Includes UTF-8 multibyte handling and a buffered-stream
+  fallback for tests.
+
 ## [0.2.1] - 2026-08-22
 
 ### Added

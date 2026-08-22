@@ -59,6 +59,52 @@ class TestParseKey:
 # =============================================================================
 # Menu behavior (driven with scripted keys, no tty required)
 # =============================================================================
+class TestReadKey:
+    """read_key against a real pipe -- the buffered-stream trap regression."""
+
+    def _pipe_read_key(self, payload: bytes, keys: int = 1):
+        import io
+        import os
+
+        from termflow.tui.keys import read_key
+
+        r, w = os.pipe()
+        os.write(w, payload)
+        os.close(w)
+        stream = io.TextIOWrapper(os.fdopen(r, "rb"), encoding="utf-8")
+        try:
+            return [read_key(stream) for _ in range(keys)]
+        finally:
+            stream.close()
+
+    def test_arrow_burst_is_not_a_bare_escape(self):
+        # ESC [ A arrives as one burst; TextIOWrapper.read(1) would slurp
+        # it all into the internal buffer, fooling select() and turning
+        # the arrow into a menu-cancelling ESC. The os.read path must win.
+        assert self._pipe_read_key(b"\x1b[A") == [Key.UP]
+
+    def test_sequence_of_arrows_then_enter(self):
+        assert self._pipe_read_key(b"\x1b[B\x1b[B\r", keys=3) == [
+            Key.DOWN,
+            Key.DOWN,
+            Key.ENTER,
+        ]
+
+    def test_lone_escape_still_cancels(self):
+        assert self._pipe_read_key(b"\x1b") == [Key.ESCAPE]
+
+    def test_utf8_multibyte_char(self):
+        assert self._pipe_read_key("\u00e9".encode()) == ["\u00e9"]
+
+    def test_stringio_fallback_still_works(self):
+        from io import StringIO
+
+        from termflow.tui.keys import read_key
+
+        assert read_key(StringIO("a")) == "a"
+        assert read_key(StringIO("")) == Key.ESCAPE
+
+
 def run_menu(items, keys, **kwargs):
     """Drive a menu with a scripted key sequence, capturing output."""
     script = iter(keys)

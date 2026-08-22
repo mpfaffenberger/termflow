@@ -11,6 +11,7 @@ escape disambiguation, ``msvcrt`` on Windows).
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import IO
 
@@ -112,18 +113,54 @@ def parse_key(char: str, escape_tail: str = "") -> str | None:
     return char
 
 
-def _read_escape_tail(stream: IO[str], timeout: float) -> str:
-    """Read the remainder of an escape sequence, if any bytes are pending."""
-    tail = ""
-    if not _HAS_SELECT:
-        return tail
+def _fileno(stream: IO[str]) -> int | None:
     try:
-        fd = stream.fileno()
+        return stream.fileno()
     except Exception:
-        return tail
-    # Escape sequences arrive as a burst; a lone ESC keypress does not.
-    while select.select([fd], [], [], timeout)[0]:
-        ch = stream.read(1)
+        return None
+
+
+def _utf8_expected_len(first: int) -> int:
+    if first >> 5 == 0b110:
+        return 2
+    if first >> 4 == 0b1110:
+        return 3
+    if first >> 3 == 0b11110:
+        return 4
+    return 1
+
+
+def _read_char_fd(fd: int, timeout: float | None = None) -> str:
+    """Read one character (possibly multibyte UTF-8) straight from the fd.
+
+    Bypasses Python's buffered text stream entirely: mixing
+    ``stream.read(1)`` with ``select()`` on the fd is a trap, because the
+    TextIOWrapper slurps a whole escape-sequence burst into its internal
+    buffer while returning a single char -- after which ``select`` swears
+    nothing is pending and an arrow key looks like a lone ESC.
+    """
+    if timeout is not None and not select.select([fd], [], [], timeout)[0]:
+        return ""
+    data = os.read(fd, 1)
+    if not data:
+        return ""
+    need = _utf8_expected_len(data[0])
+    while len(data) < need and select.select([fd], [], [], 0.01)[0]:
+        more = os.read(fd, 1)
+        if not more:
+            break
+        data += more
+    return data.decode("utf-8", errors="replace")
+
+
+def _read_escape_tail_fd(fd: int, timeout: float) -> str:
+    """Read the remainder of an escape sequence, if any bytes are pending.
+
+    Escape sequences arrive as a burst; a lone ESC keypress does not.
+    """
+    tail = ""
+    while True:
+        ch = _read_char_fd(fd, timeout)
         if not ch:
             break
         tail += ch
@@ -149,14 +186,22 @@ def read_key(stream: IO[str] | None = None, escape_timeout: float = 0.02) -> str
     so callers always get something meaningful back.
     """
     stream = stream if stream is not None else sys.stdin
+    fd = _fileno(stream) if _HAS_SELECT else None
     while True:
         if _HAS_MSVCRT and stream is sys.stdin:  # pragma: no cover - Windows
             key = _read_key_windows()
+        elif fd is not None:
+            char = _read_char_fd(fd)
+            if not char:
+                return Key.ESCAPE  # EOF: treat as cancel.
+            tail = _read_escape_tail_fd(fd, escape_timeout) if char == "\x1b" else ""
+            key = parse_key(char, tail)
         else:
+            # Buffered fallback (StringIO and friends): no fd to select on,
+            # so a bare ESC is taken at face value.
             char = stream.read(1)
             if not char:
                 return Key.ESCAPE  # EOF: treat as cancel.
-            tail = _read_escape_tail(stream, escape_timeout) if char == "\x1b" else ""
-            key = parse_key(char, tail)
+            key = parse_key(char)
         if key is not None:
             return key
