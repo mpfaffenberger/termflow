@@ -44,6 +44,41 @@ class RenderStyle:
         return cls()
 
     @classmethod
+    def from_palette(cls, palette) -> RenderStyle:
+        """Derive a style from a terminal palette's ANSI slots.
+
+        Accepts a :class:`termflow.themes.Palette` or any mapping/object
+        exposing ``ansi`` (16 #rrggbb strings, slots 0-15) and optionally
+        ``bg``. Keeps rendered output on-theme when the application has
+        remapped the terminal colors (OSC 4/10/11): accents come from the
+        palette's bright slots instead of the hardcoded defaults.
+
+        Slots with missing colors fall back to the default style's value.
+        """
+        if isinstance(palette, dict):
+            ansi = list(palette.get("ansi") or [])
+            bg = palette.get("bg")
+        else:
+            ansi = list(getattr(palette, "ansi", ()) or ())
+            bg = getattr(palette, "bg", None)
+        base = cls()
+
+        def slot(i: int, fallback: str) -> str:
+            return ansi[i] if i < len(ansi) and ansi[i] else fallback
+
+        return cls(
+            bright=slot(12, base.bright),  # bright blue - primary accent
+            head=slot(10, base.head),  # bright green - secondary
+            symbol=slot(5, base.symbol),  # magenta - markers, borders
+            grey=slot(8, base.grey),  # bright black - dim text
+            dark=bg or slot(0, base.dark),  # background-adjacent
+            mid=slot(0, base.mid),  # block backgrounds
+            light=slot(14, base.light),  # bright cyan - light accent
+            link=slot(12, base.link),  # match primary accent
+            error=slot(9, base.error),  # bright red
+        )
+
+    @classmethod
     def from_hue(cls, hue: float) -> RenderStyle:
         """Generate a style from a base hue (0.0-1.0).
 
