@@ -44,17 +44,19 @@ One of termflow's best features is **Pygments-powered syntax highlighting**!
 from termflow import Parser, Renderer, render_markdown
 import sys
 
+
 def stream_markdown(lines: list[str]) -> None:
     """Stream markdown content line by line."""
     parser = Parser()
     renderer = Renderer(output=sys.stdout, width=80)
-    
+
     for line in lines:
         events = parser.parse_line(line)
         renderer.render_all(events)
-    
+
     # Don't forget to finalize!
     renderer.render_all(parser.finalize())
+
 
 if __name__ == "__main__":
     stream_markdown(["# Hello", "", "World!"])

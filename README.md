@@ -86,7 +86,7 @@ Custom styling:
 ```python
 from termflow import Renderer, RenderStyle, RenderFeatures
 
-style = RenderStyle.dracula()          # or .nord(), .gruvbox(), .default()
+style = RenderStyle.dracula()  # or .nord(), .gruvbox(), .default()
 style = RenderStyle(bright="#87ceeb")  # or roll your own
 
 renderer = Renderer(
@@ -120,7 +120,7 @@ parser = Parser()
 async for chunk in model_stream:
     renderer.render_all(parser.parse_line(chunk))
 
-await writer.close()   # waits for the buffer to finish draining
+await writer.close()  # waits for the buffer to finish draining
 # writer.abort()       # or: stop typing NOW and drop the backlog
 ```
 
@@ -170,11 +170,13 @@ from termflow.tui import MenuBuilder, MenuItem
 
 result = (
     MenuBuilder("Pick a model")
-    .items([
-        MenuItem("gpt-5", description="fast and smart"),
-        MenuItem("claude", description="thoughtful"),
-        MenuItem("qwen", description="local"),
-    ])
+    .items(
+        [
+            MenuItem("gpt-5", description="fast and smart"),
+            MenuItem("claude", description="thoughtful"),
+            MenuItem("qwen", description="local"),
+        ]
+    )
     .searchable()
     .page_size(10)
     .preview(lambda item: f"Details for {item.label}")
