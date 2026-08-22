@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-22
+
+### Added
+
+- `termflow.tui.terminal_session()` — refcounted, thread-safe context
+  manager holding raw mode + ONE alternate screen across multiple TUI
+  components. Chained menu flows (a picker opening sub-pickers) run each
+  menu with `alt_screen=False` inside a session and never flash the
+  primary screen between menus. Nested sessions share the outermost one.
+
 ## [0.2.2] - 2026-08-22
 
 ### Fixed

@@ -31,7 +31,7 @@ CLI usage:
     $ tf --style dracula README.md
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 from termflow.config import Config
 from termflow.parser import Parser

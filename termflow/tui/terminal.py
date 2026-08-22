@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import sys
+import threading
 from typing import IO, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -73,6 +74,50 @@ def raw_mode(stream: IO[str] | None = None) -> Iterator[None]:
     finally:
         with contextlib.suppress(Exception):
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+_session_lock = threading.Lock()
+_session_depth = 0
+_session_stack: contextlib.ExitStack | None = None
+
+
+@contextlib.contextmanager
+def terminal_session(output: IO[str] | None = None) -> Iterator[None]:
+    """Hold raw mode + ONE alternate screen across multiple TUI components.
+
+    Menus normally enter/exit the alternate screen per ``run()``; chained
+    flows (a picker opening sub-pickers) would flash the primary screen
+    between every menu. Wrap the whole flow in a ``terminal_session`` and
+    run each menu with ``alt_screen=False``: the session owns the screen
+    and raw mode, the menus just paint.
+
+    Reentrant and refcounted (thread-safe): nested sessions share the
+    outermost one, so components can wrap themselves defensively without
+    caring whether a parent already holds the terminal.
+    """
+    global _session_depth, _session_stack
+    with _session_lock:
+        _session_depth += 1
+        if _session_depth == 1:
+            stack = contextlib.ExitStack()
+            try:
+                stack.enter_context(raw_mode())
+                stack.enter_context(alt_screen(output))
+            except Exception:
+                _session_depth -= 1
+                with contextlib.suppress(Exception):
+                    stack.close()
+                raise
+            _session_stack = stack
+    try:
+        yield
+    finally:
+        with _session_lock:
+            _session_depth -= 1
+            if _session_depth == 0 and _session_stack is not None:
+                stack, _session_stack = _session_stack, None
+                with contextlib.suppress(Exception):
+                    stack.close()
 
 
 @contextlib.contextmanager

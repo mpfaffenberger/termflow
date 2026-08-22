@@ -10,7 +10,12 @@ prompt_toolkit -- just escape sequences and small, injectable pieces.
 
 from termflow.tui.keys import Key, parse_key, read_key
 from termflow.tui.menu import Menu, MenuBuilder, MenuItem, MenuResult
-from termflow.tui.terminal import alt_screen, raw_mode, terminal_size
+from termflow.tui.terminal import (
+    alt_screen,
+    raw_mode,
+    terminal_session,
+    terminal_size,
+)
 
 __all__ = [
     "Key",
@@ -22,5 +27,6 @@ __all__ = [
     "parse_key",
     "raw_mode",
     "read_key",
+    "terminal_session",
     "terminal_size",
 ]

@@ -9,6 +9,52 @@ from termflow.tui import Key, MenuBuilder, MenuItem, parse_key
 # =============================================================================
 # Key parsing
 # =============================================================================
+class TestTerminalSession:
+    """Refcounted raw-mode + alt-screen session for chained menus."""
+
+    def test_single_session_enters_and_exits_once(self):
+        from io import StringIO
+
+        from termflow.tui import terminal_session
+
+        out = StringIO()
+        with terminal_session(out):
+            pass
+        assert out.getvalue().count("\x1b[?1049h") == 1
+        assert out.getvalue().count("\x1b[?1049l") == 1
+
+    def test_nested_sessions_share_one_alt_screen(self):
+        from io import StringIO
+
+        from termflow.tui import terminal_session
+
+        out = StringIO()
+        with terminal_session(out):
+            with terminal_session(out):
+                pass
+            # Inner exit must NOT drop back to the primary screen.
+            assert out.getvalue().count("\x1b[?1049l") == 0
+        assert out.getvalue().count("\x1b[?1049h") == 1
+        assert out.getvalue().count("\x1b[?1049l") == 1
+
+    def test_session_releases_on_exception(self):
+        from io import StringIO
+
+        from termflow.tui import terminal_session
+
+        out = StringIO()
+        try:
+            with terminal_session(out):
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+        assert out.getvalue().count("\x1b[?1049l") == 1
+        # Depth back to zero: a fresh session works.
+        with terminal_session(out):
+            pass
+        assert out.getvalue().count("\x1b[?1049h") == 2
+
+
 class TestParseKey:
     def test_printable_passthrough(self):
         assert parse_key("a") == "a"
