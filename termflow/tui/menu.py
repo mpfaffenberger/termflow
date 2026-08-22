@@ -100,6 +100,10 @@ class Menu:
         preview: Callable[[MenuItem], str] | None = None,
         on_highlight: Callable[[MenuItem], None] | None = None,
         footer_hint: str | None = None,
+        key_handlers: dict[str, Callable[[Menu, MenuItem], MenuResult | None]] | None = None,
+        initial_index: int = 0,
+        list_width: int | None = None,
+        filter_fn: Callable[[str, MenuItem], bool] | None = None,
         output: IO[str] | None = None,
         key_source: Callable[[], str] | None = None,
         size: Callable[[], tuple[int, int]] | None = None,
@@ -114,22 +118,57 @@ class Menu:
         self._preview = preview
         self._on_highlight = on_highlight
         self._footer_hint = footer_hint
+        self._key_handlers = dict(key_handlers or {})
+        self._list_width = list_width
+        self._filter_fn = filter_fn
         self._output = output if output is not None else sys.stdout
         self._read_key = key_source or (lambda: read_key())
         self._size = size or terminal_size
         self._use_alt_screen = use_alt_screen
 
-        self._cursor = 0
+        self._cursor = max(0, min(initial_index, max(len(self._items) - 1, 0)))
         self._search = ""
         self._checked: set[int] = set()  # indexes into self._items
+
+    @property
+    def highlighted(self) -> MenuItem | None:
+        """The currently highlighted item (None when filtered empty)."""
+        rows = self._filtered()
+        self._clamp_cursor(rows)
+        return rows[self._cursor][1] if rows else None
+
+    def replace_items(self, items: Sequence[MenuItem]) -> None:
+        """Swap the menu rows in place (for key handlers that mutate state)."""
+        self._items = list(items)
+        self._checked.clear()
+        self._clamp_cursor(self._filtered())
+
+    def clear_search(self) -> None:
+        """Reset the search filter (for a bound clear-filter key)."""
+        self._search = ""
+
+    def page_up(self) -> None:
+        """Move the cursor one page toward the top."""
+        self._cursor = max(0, self._cursor - self._page_size)
+
+    def page_down(self) -> None:
+        """Move the cursor one page toward the bottom."""
+        rows = self._filtered()
+        self._cursor = min(max(len(rows) - 1, 0), self._cursor + self._page_size)
 
     # -- state helpers ------------------------------------------------------
     def _filtered(self) -> list[tuple[int, MenuItem]]:
         """(original_index, item) pairs matching the search filter."""
         if not self._search:
             return list(enumerate(self._items))
-        needle = self._search.lower()
-        return [(i, it) for i, it in enumerate(self._items) if needle in it.label.lower()]
+        if self._filter_fn is not None:
+            matches = self._filter_fn
+        else:
+
+            def matches(query: str, item: MenuItem) -> bool:
+                return query.lower() in item.label.lower()
+
+        return [(i, it) for i, it in enumerate(self._items) if matches(self._search, it)]
 
     def _move_cursor(self, rows: list[tuple[int, MenuItem]], delta: int) -> None:
         """Move the cursor by delta, wrapping and skipping disabled rows."""
@@ -198,7 +237,10 @@ class Menu:
 
         page_start = (self._cursor // self._page_size) * self._page_size
         page = rows[page_start : page_start + self._page_size]
-        list_width = cols if self._preview is None else max(20, cols // 2)
+        if self._preview is None:  # noqa: SIM108 - chained or reads worse inline
+            list_width = cols
+        else:
+            list_width = self._list_width or max(20, cols // 2)
         body = [
             self._render_row(page_start + offset, index, item, list_width - 1)
             for offset, (index, item) in enumerate(page)
@@ -255,6 +297,11 @@ class Menu:
                 return result
 
     def _handle_key(self, key: str, rows: list[tuple[int, MenuItem]]) -> MenuResult | None:
+        handler = self._key_handlers.get(key)
+        if handler is not None and rows:
+            with contextlib.suppress(Exception):
+                return handler(self, rows[self._cursor][1])
+            return None
         if key in (Key.ESCAPE, "ctrl-c"):
             return MenuResult(cancelled=True)
         if key == Key.ENTER:
@@ -264,10 +311,10 @@ class Menu:
         elif key == Key.DOWN:
             self._move_cursor(rows, 1)
         elif key == Key.PAGE_UP:
-            self._cursor = max(0, self._cursor - self._page_size)
+            self.page_up()
             self._fire_highlight(rows)
         elif key == Key.PAGE_DOWN:
-            self._cursor = min(max(len(rows) - 1, 0), self._cursor + self._page_size)
+            self.page_down()
             self._fire_highlight(rows)
         elif key == Key.HOME:
             self._cursor = 0
@@ -339,6 +386,34 @@ class MenuBuilder:
 
     def footer_hint(self, text: str) -> MenuBuilder:
         self._kwargs["footer_hint"] = text
+        return self
+
+    def on_key(
+        self, key: str, handler: Callable[[Menu, MenuItem], MenuResult | None]
+    ) -> MenuBuilder:
+        """Bind a custom action key (e.g. ``"p"`` to pin, ``"d"`` to delete).
+
+        The handler receives the running :class:`Menu` and the highlighted
+        item. Return a :class:`MenuResult` to exit the menu with it, or
+        ``None`` to repaint and keep going. Custom keys take precedence
+        over built-in handling (including search typing).
+        """
+        self._kwargs.setdefault("key_handlers", {})[key] = handler
+        return self
+
+    def initial_index(self, index: int) -> MenuBuilder:
+        """Open with the cursor on this item index (e.g. current selection)."""
+        self._kwargs["initial_index"] = index
+        return self
+
+    def list_width(self, width: int) -> MenuBuilder:
+        """Fix the left column width when a preview pane is present."""
+        self._kwargs["list_width"] = width
+        return self
+
+    def filter_fn(self, matches: Callable[[str, MenuItem], bool]) -> MenuBuilder:
+        """Replace the default substring search with a custom matcher."""
+        self._kwargs["filter_fn"] = matches
         return self
 
     def output(self, stream: IO[str]) -> MenuBuilder:

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-22
+
+### Added
+
+- `Menu` / `MenuBuilder` grew the hooks real-world pickers need
+  (driven by porting Code Puppy's TUI menus):
+  - `.on_key(key, handler)` — custom action keys (pin/clone/delete
+    patterns); handlers receive the live `Menu` + highlighted item and
+    either exit with a `MenuResult` or mutate state and repaint.
+  - `.initial_index(i)` — open with the cursor on the current selection.
+  - `.list_width(n)` — fixed left-column width for preview layouts.
+  - `.filter_fn(matches)` — custom search matching (fuzzy filters).
+  - `Menu.replace_items()`, `Menu.clear_search()`, `Menu.page_up()`,
+    `Menu.page_down()`, `Menu.highlighted` — public state surface for
+    key handlers.
+
 ## [0.2.0] - 2026-08-22
 
 ### Added

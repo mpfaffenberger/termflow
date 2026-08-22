@@ -153,6 +153,16 @@ class TestMenuSearch:
         assert not result.cancelled
         assert result.item.label == "alpha"
 
+    def test_custom_filter_fn(self):
+        # Match against value, not label.
+        result, _ = run_menu(
+            [MenuItem("Pretty", value="ugly-internal"), MenuItem("Other", value="x")],
+            ["u", "g", Key.ENTER],
+            searchable=True,
+            filter_fn=lambda q, it: q in str(it.value),
+        )
+        assert result.item.label == "Pretty"
+
     def test_no_matches_renders_hint(self):
         keys = ["z", Key.ESCAPE]
         _, screen = run_menu(["alpha"], keys, searchable=True)
@@ -208,6 +218,78 @@ class TestMenuRendering:
         text = visible(screen)
         assert "custom help" in text
         assert "esc cancel" not in text
+
+    def test_initial_index_opens_on_item(self):
+        result, _ = run_menu(["a", "b", "c"], [Key.ENTER], initial_index=2)
+        assert result.item.label == "c"
+
+    def test_list_width_controls_left_column(self):
+        _, screen = run_menu(
+            [MenuItem("item")],
+            [Key.ESCAPE],
+            preview=lambda _it: "PREVIEWTEXT",
+            list_width=30,
+        )
+        line = next(ln for ln in visible(screen).splitlines() if "PREVIEWTEXT" in ln)
+        assert line.index("PREVIEWTEXT") == 33  # 30 + " | " divider
+
+    def test_on_key_handler_exits_with_result(self):
+        from termflow.tui.menu import MenuResult
+
+        def pin(_menu, item):
+            return MenuResult(item=MenuItem(f"pinned:{item.label}"))
+
+        script = iter([Key.DOWN, "p"])
+        out = StringIO()
+        result = (
+            MenuBuilder("t")
+            .items(["a", "b"])
+            .output(out)
+            .key_source(lambda: next(script))
+            .size(lambda: (80, 24))
+            .alt_screen(False)
+            .on_key("p", pin)
+            .run()
+        )
+        assert result.item.label == "pinned:b"
+
+    def test_on_key_handler_can_mutate_and_continue(self):
+        def reload(menu, _item):
+            menu.replace_items([MenuItem("fresh")])
+            return None
+
+        script = iter(["r", Key.ENTER])
+        out = StringIO()
+        result = (
+            MenuBuilder("t")
+            .items(["stale"])
+            .output(out)
+            .key_source(lambda: next(script))
+            .size(lambda: (80, 24))
+            .alt_screen(False)
+            .on_key("r", reload)
+            .run()
+        )
+        assert result.item.label == "fresh"
+
+    def test_on_key_takes_precedence_over_search(self):
+        from termflow.tui.menu import MenuResult
+
+        script = iter(["p"])
+        out = StringIO()
+        result = (
+            MenuBuilder("t")
+            .items(["alpha"])
+            .searchable()
+            .output(out)
+            .key_source(lambda: next(script))
+            .size(lambda: (80, 24))
+            .alt_screen(False)
+            .on_key("p", lambda _menu, item: MenuResult(item=item))
+            .run()
+        )
+        # "p" acted as the bound key, not a search character.
+        assert result.item.label == "alpha"
 
     def test_preview_errors_swallowed(self):
         def boom(_item):
