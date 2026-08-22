@@ -245,6 +245,36 @@ class TestMenuSearch:
         assert not result.cancelled
         assert result.item.label == "alpha"
 
+    def test_auto_page_size_fills_tall_terminal(self):
+        from termflow.ansi.utils import visible
+
+        items = [MenuItem(f"item-{i:02d}") for i in range(30)]
+        # 40 rows: all 30 items fit on one page, no pagination hint.
+        _, screen = run_menu(items, [Key.ESCAPE], size=lambda: (80, 40))
+        text = visible(screen)
+        assert "item-29" in text
+        assert "page 1/" not in text
+
+    def test_auto_page_size_paginates_short_terminal(self):
+        from termflow.ansi.utils import visible
+
+        items = [MenuItem(f"item-{i:02d}") for i in range(30)]
+        # 12 rows: 8 items per page (12 - 4 overhead), pagination kicks in.
+        _, screen = run_menu(items, [Key.ESCAPE], size=lambda: (80, 12))
+        text = visible(screen)
+        assert "item-00" in text
+        assert "item-08" not in text
+        assert "page 1/4" in text
+
+    def test_explicit_page_size_still_honored(self):
+        from termflow.ansi.utils import visible
+
+        items = [MenuItem(f"item-{i:02d}") for i in range(30)]
+        _, screen = run_menu(items, [Key.ESCAPE], size=lambda: (80, 40), page_size=5)
+        text = visible(screen)
+        assert "item-04" in text
+        assert "item-05" not in text
+
     def test_tall_preview_is_clamped_to_terminal_height(self):
         # A preview taller than the screen must not push the title and
         # list rows into scrollback (the frame would scroll and the menu

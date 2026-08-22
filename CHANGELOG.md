@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-08-22
+
+### Changed
+
+- `Menu` page size now defaults to auto-fit: with no explicit
+  `page_size`, the list fills the available terminal height (fixed
+  overhead for title/search/footer). An explicit `page_size` is
+  honored unchanged.
+
 ## [0.2.5] - 2026-08-22
 
 ### Fixed

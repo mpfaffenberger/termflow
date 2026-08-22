@@ -96,7 +96,7 @@ class Menu:
         style: RenderStyle | None = None,
         multi_select: bool = False,
         searchable: bool = False,
-        page_size: int = 10,
+        page_size: int | None = None,
         preview: Callable[[MenuItem], str] | None = None,
         on_highlight: Callable[[MenuItem], None] | None = None,
         footer_hint: str | None = None,
@@ -114,7 +114,7 @@ class Menu:
         self._style = style or RenderStyle.default()
         self._multi = multi_select
         self._searchable = searchable
-        self._page_size = max(1, page_size)
+        self._page_size = max(1, page_size) if page_size is not None else None
         self._preview = preview
         self._on_highlight = on_highlight
         self._footer_hint = footer_hint
@@ -147,14 +147,23 @@ class Menu:
         """Reset the search filter (for a bound clear-filter key)."""
         self._search = ""
 
+    def _effective_page_size(self) -> int:
+        """Fixed page size if configured, else fit the terminal height."""
+        if self._page_size is not None:
+            return self._page_size
+        _cols, rows_avail = self._size()
+        # Overhead: title + optional search row + blank + blank + footer.
+        overhead = 4 + (1 if self._searchable else 0)
+        return max(1, rows_avail - overhead)
+
     def page_up(self) -> None:
         """Move the cursor one page toward the top."""
-        self._cursor = max(0, self._cursor - self._page_size)
+        self._cursor = max(0, self._cursor - self._effective_page_size())
 
     def page_down(self) -> None:
         """Move the cursor one page toward the bottom."""
         rows = self._filtered()
-        self._cursor = min(max(len(rows) - 1, 0), self._cursor + self._page_size)
+        self._cursor = min(max(len(rows) - 1, 0), self._cursor + self._effective_page_size())
 
     # -- state helpers ------------------------------------------------------
     def _filtered(self) -> list[tuple[int, MenuItem]]:
@@ -201,9 +210,10 @@ class Menu:
         if self._searchable:
             parts.append("type to filter")
         parts.append("esc cancel")
-        pages = (len(rows) + self._page_size - 1) // self._page_size
+        page_size = self._effective_page_size()
+        pages = (len(rows) + page_size - 1) // page_size
         if pages > 1:
-            parts.append(f"page {self._cursor // self._page_size + 1}/{pages}")
+            parts.append(f"page {self._cursor // page_size + 1}/{pages}")
         return " · ".join(parts)
 
     def _render_row(self, pos: int, index: int, item: MenuItem, width: int) -> str:
@@ -235,8 +245,9 @@ class Menu:
             lines.append(f"{fg_color(s.symbol)}search:{RESET} {style_on}{hint}{RESET}")
         lines.append("")
 
-        page_start = (self._cursor // self._page_size) * self._page_size
-        page = rows[page_start : page_start + self._page_size]
+        page_size = self._effective_page_size()
+        page_start = (self._cursor // page_size) * page_size
+        page = rows[page_start : page_start + page_size]
         if self._preview is None:  # noqa: SIM108 - chained or reads worse inline
             list_width = cols
         else:
@@ -377,7 +388,8 @@ class MenuBuilder:
         self._kwargs["searchable"] = enabled
         return self
 
-    def page_size(self, size: int) -> MenuBuilder:
+    def page_size(self, size: int | None) -> MenuBuilder:
+        """Fix rows per page; default (None) auto-fits the terminal height."""
         self._kwargs["page_size"] = size
         return self
 
