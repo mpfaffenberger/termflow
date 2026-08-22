@@ -1,0 +1,400 @@
+"""A declarative, dependency-free menu toolkit for terminal UIs.
+
+Build interactive pickers with :class:`MenuBuilder`::
+
+    from termflow.tui import MenuBuilder, MenuItem
+
+    result = (
+        MenuBuilder("Pick a model")
+        .items([MenuItem("gpt-5", value="gpt-5", description="fast & smart")])
+        .searchable()
+        .page_size(10)
+        .footer_hint("custom help text")  # optional
+        .run()
+    )
+    if not result.cancelled:
+        print(result.item.value)
+
+Everything is injectable (key source, output stream, terminal size) so
+menus are fully testable without a tty. Rendering is plain ANSI on the
+alternate screen buffer -- no curses, no prompt_toolkit.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import sys
+from dataclasses import dataclass, field
+from typing import IO, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+
+from termflow.ansi.codes import BOLD_ON, DIM_ON, RESET
+from termflow.ansi.color import fg_color
+from termflow.ansi.utils import visible_length
+from termflow.render.style import RenderStyle
+from termflow.tui.keys import Key, read_key
+from termflow.tui.terminal import (
+    CLEAR_TO_EOL,
+    CURSOR_HOME,
+    alt_screen,
+    raw_mode,
+    terminal_size,
+)
+
+_POINTER = "> "
+_NO_POINTER = "  "
+_CHECKED = "◉ "
+_UNCHECKED = "○ "
+
+
+@dataclass
+class MenuItem:
+    """One selectable row.
+
+    Attributes:
+        label: Text shown in the list.
+        value: Arbitrary payload returned on selection (defaults to label).
+        description: Dim text shown after the label.
+        disabled: Unselectable rows (section headers, separators).
+    """
+
+    label: str
+    value: Any = None
+    description: str = ""
+    disabled: bool = False
+
+    def __post_init__(self) -> None:
+        if self.value is None:
+            self.value = self.label
+
+
+@dataclass
+class MenuResult:
+    """Outcome of a menu session.
+
+    Attributes:
+        cancelled: True when the user pressed Escape / ctrl-c.
+        item: The highlighted item (single-select), or None.
+        items: All toggled items (multi-select), else empty.
+    """
+
+    cancelled: bool = False
+    item: MenuItem | None = None
+    items: list[MenuItem] = field(default_factory=list)
+
+
+class Menu:
+    """Interactive list picker. Prefer building via :class:`MenuBuilder`."""
+
+    def __init__(
+        self,
+        title: str,
+        items: Sequence[MenuItem],
+        *,
+        style: RenderStyle | None = None,
+        multi_select: bool = False,
+        searchable: bool = False,
+        page_size: int = 10,
+        preview: Callable[[MenuItem], str] | None = None,
+        on_highlight: Callable[[MenuItem], None] | None = None,
+        footer_hint: str | None = None,
+        output: IO[str] | None = None,
+        key_source: Callable[[], str] | None = None,
+        size: Callable[[], tuple[int, int]] | None = None,
+        use_alt_screen: bool = True,
+    ) -> None:
+        self._title = title
+        self._items = list(items)
+        self._style = style or RenderStyle.default()
+        self._multi = multi_select
+        self._searchable = searchable
+        self._page_size = max(1, page_size)
+        self._preview = preview
+        self._on_highlight = on_highlight
+        self._footer_hint = footer_hint
+        self._output = output if output is not None else sys.stdout
+        self._read_key = key_source or (lambda: read_key())
+        self._size = size or terminal_size
+        self._use_alt_screen = use_alt_screen
+
+        self._cursor = 0
+        self._search = ""
+        self._checked: set[int] = set()  # indexes into self._items
+
+    # -- state helpers ------------------------------------------------------
+    def _filtered(self) -> list[tuple[int, MenuItem]]:
+        """(original_index, item) pairs matching the search filter."""
+        if not self._search:
+            return list(enumerate(self._items))
+        needle = self._search.lower()
+        return [(i, it) for i, it in enumerate(self._items) if needle in it.label.lower()]
+
+    def _move_cursor(self, rows: list[tuple[int, MenuItem]], delta: int) -> None:
+        """Move the cursor by delta, wrapping and skipping disabled rows."""
+        if not rows:
+            return
+        n = len(rows)
+        pos = self._cursor
+        for _ in range(n):
+            pos = (pos + delta) % n
+            if not rows[pos][1].disabled:
+                self._cursor = pos
+                self._fire_highlight(rows)
+                return
+
+    def _fire_highlight(self, rows: list[tuple[int, MenuItem]]) -> None:
+        if self._on_highlight and rows:
+            with contextlib.suppress(Exception):
+                self._on_highlight(rows[self._cursor][1])
+
+    def _clamp_cursor(self, rows: list[tuple[int, MenuItem]]) -> None:
+        self._cursor = max(0, min(self._cursor, len(rows) - 1)) if rows else 0
+
+    # -- rendering ----------------------------------------------------------
+    def _footer(self, rows: list[tuple[int, MenuItem]]) -> str:
+        if self._footer_hint is not None:
+            return self._footer_hint
+        parts = ["↑/↓ move", "enter select"]
+        if self._multi:
+            parts.insert(1, "space toggle")
+        if self._searchable:
+            parts.append("type to filter")
+        parts.append("esc cancel")
+        pages = (len(rows) + self._page_size - 1) // self._page_size
+        if pages > 1:
+            parts.append(f"page {self._cursor // self._page_size + 1}/{pages}")
+        return " · ".join(parts)
+
+    def _render_row(self, pos: int, index: int, item: MenuItem, width: int) -> str:
+        s = self._style
+        if item.disabled:
+            return f"{DIM_ON}{_NO_POINTER}{item.label}{RESET}"
+        pointer = _POINTER if pos == self._cursor else _NO_POINTER
+        check = ""
+        if self._multi:
+            check = _CHECKED if index in self._checked else _UNCHECKED
+        label = item.label
+        desc = f"  {DIM_ON}{item.description}{RESET}" if item.description else ""
+        if pos == self._cursor:
+            line = f"{fg_color(s.bright)}{BOLD_ON}{pointer}{check}{label}{RESET}{desc}"
+        else:
+            line = f"{pointer}{check}{label}{desc}"
+        return _truncate(line, width)
+
+    def _frame(self) -> list[str]:
+        cols, _rows_avail = self._size()
+        rows = self._filtered()
+        self._clamp_cursor(rows)
+        s = self._style
+
+        lines = [f"{fg_color(s.bright)}{BOLD_ON}{self._title}{RESET}"]
+        if self._searchable:
+            hint = self._search or "(type to filter)"
+            style_on = "" if self._search else DIM_ON
+            lines.append(f"{fg_color(s.symbol)}search:{RESET} {style_on}{hint}{RESET}")
+        lines.append("")
+
+        page_start = (self._cursor // self._page_size) * self._page_size
+        page = rows[page_start : page_start + self._page_size]
+        list_width = cols if self._preview is None else max(20, cols // 2)
+        body = [
+            self._render_row(page_start + offset, index, item, list_width - 1)
+            for offset, (index, item) in enumerate(page)
+        ]
+        if not body:
+            body = [f"{DIM_ON}(no matches){RESET}"]
+
+        if self._preview is not None and rows:
+            preview_text = self._preview_text(rows[self._cursor][1])
+            body = _two_columns(body, preview_text.splitlines(), list_width, cols)
+
+        lines.extend(body)
+        lines.append("")
+        lines.append(f"{DIM_ON}{self._footer(rows)}{RESET}")
+        return lines
+
+    def _preview_text(self, item: MenuItem) -> str:
+        try:
+            return self._preview(item) if self._preview else ""
+        except Exception:
+            return ""
+
+    def _paint(self) -> None:
+        # Full repaint: home the cursor, redraw every line with
+        # clear-to-eol, then clear anything below the frame.
+        frame = self._frame()
+        payload = CURSOR_HOME + "".join(f"{line}{CLEAR_TO_EOL}\r\n" for line in frame) + "\x1b[J"
+        try:
+            self._output.write(payload)
+            self._output.flush()
+        except Exception:
+            pass
+
+    # -- event loop ---------------------------------------------------------
+    def run(self) -> MenuResult:
+        """Run the menu until the user selects or cancels."""
+        if self._use_alt_screen:
+            with raw_mode(), alt_screen(self._output):
+                return self._loop()
+        return self._loop()
+
+    def _loop(self) -> MenuResult:
+        rows = self._filtered()
+        if rows and rows[self._cursor][1].disabled:
+            self._move_cursor(rows, 1)
+        self._fire_highlight(rows)
+        while True:
+            self._paint()
+            key = self._read_key()
+            rows = self._filtered()
+            self._clamp_cursor(rows)
+            result = self._handle_key(key, rows)
+            if result is not None:
+                return result
+
+    def _handle_key(self, key: str, rows: list[tuple[int, MenuItem]]) -> MenuResult | None:
+        if key in (Key.ESCAPE, "ctrl-c"):
+            return MenuResult(cancelled=True)
+        if key == Key.ENTER:
+            return self._select(rows)
+        if key == Key.UP:
+            self._move_cursor(rows, -1)
+        elif key == Key.DOWN:
+            self._move_cursor(rows, 1)
+        elif key == Key.PAGE_UP:
+            self._cursor = max(0, self._cursor - self._page_size)
+            self._fire_highlight(rows)
+        elif key == Key.PAGE_DOWN:
+            self._cursor = min(max(len(rows) - 1, 0), self._cursor + self._page_size)
+            self._fire_highlight(rows)
+        elif key == Key.HOME:
+            self._cursor = 0
+            self._fire_highlight(rows)
+        elif key == Key.END:
+            self._cursor = max(len(rows) - 1, 0)
+            self._fire_highlight(rows)
+        elif key == " " and self._multi and rows:
+            index = rows[self._cursor][0]
+            self._checked.symmetric_difference_update({index})
+        elif key == Key.BACKSPACE and self._searchable:
+            self._search = self._search[:-1]
+        elif self._searchable and len(key) == 1 and key.isprintable():
+            self._search += key
+            self._cursor = 0
+        return None
+
+    def _select(self, rows: list[tuple[int, MenuItem]]) -> MenuResult | None:
+        if not rows:
+            return None
+        highlighted = rows[self._cursor][1]
+        if highlighted.disabled:
+            return None
+        if self._multi:
+            # Enter with nothing toggled selects the highlighted row.
+            chosen = [self._items[i] for i in sorted(self._checked)] or [highlighted]
+            return MenuResult(item=highlighted, items=chosen)
+        return MenuResult(item=highlighted, items=[highlighted])
+
+
+class MenuBuilder:
+    """Fluent builder for :class:`Menu`. Each setter returns ``self``."""
+
+    def __init__(self, title: str) -> None:
+        self._title = title
+        self._kwargs: dict[str, Any] = {}
+        self._items: list[MenuItem] = []
+
+    def items(self, items: Iterable[MenuItem | str]) -> MenuBuilder:
+        """Set the menu rows; bare strings become simple MenuItems."""
+        self._items = [it if isinstance(it, MenuItem) else MenuItem(it) for it in items]
+        return self
+
+    def style(self, style: RenderStyle) -> MenuBuilder:
+        self._kwargs["style"] = style
+        return self
+
+    def multi_select(self, enabled: bool = True) -> MenuBuilder:
+        self._kwargs["multi_select"] = enabled
+        return self
+
+    def searchable(self, enabled: bool = True) -> MenuBuilder:
+        self._kwargs["searchable"] = enabled
+        return self
+
+    def page_size(self, size: int) -> MenuBuilder:
+        self._kwargs["page_size"] = size
+        return self
+
+    def preview(self, callback: Callable[[MenuItem], str]) -> MenuBuilder:
+        """Right-hand preview pane fed by the highlighted item."""
+        self._kwargs["preview"] = callback
+        return self
+
+    def on_highlight(self, callback: Callable[[MenuItem], None]) -> MenuBuilder:
+        """Fire on every cursor move (live theme previews, etc.)."""
+        self._kwargs["on_highlight"] = callback
+        return self
+
+    def footer_hint(self, text: str) -> MenuBuilder:
+        self._kwargs["footer_hint"] = text
+        return self
+
+    def output(self, stream: IO[str]) -> MenuBuilder:
+        self._kwargs["output"] = stream
+        return self
+
+    def key_source(self, source: Callable[[], str]) -> MenuBuilder:
+        self._kwargs["key_source"] = source
+        return self
+
+    def size(self, size: Callable[[], tuple[int, int]]) -> MenuBuilder:
+        self._kwargs["size"] = size
+        return self
+
+    def alt_screen(self, enabled: bool = True) -> MenuBuilder:
+        self._kwargs["use_alt_screen"] = enabled
+        return self
+
+    def build(self) -> Menu:
+        return Menu(self._title, self._items, **self._kwargs)
+
+    def run(self) -> MenuResult:
+        """Convenience: build and run in one call."""
+        return self.build().run()
+
+
+# -- layout helpers -----------------------------------------------------------
+def _truncate(line: str, width: int) -> str:
+    """Clip a styled line to ``width`` visible cells, resetting styles."""
+    if visible_length(line) <= width:
+        return line
+    from termflow.ansi.utils import ANSI_ESCAPE_RE
+
+    out: list[str] = []
+    used = 0
+    i = 0
+    while i < len(line) and used < width - 1:
+        m = ANSI_ESCAPE_RE.match(line, i)
+        if m:
+            out.append(m.group(0))
+            i = m.end()
+            continue
+        out.append(line[i])
+        used += visible_length(line[i])
+        i += 1
+    return "".join(out) + f"{RESET}…"
+
+
+def _two_columns(left: list[str], right: list[str], left_width: int, total_width: int) -> list[str]:
+    """Join two line-lists side by side, padding the left column."""
+    divider = f" {DIM_ON}│{RESET} "
+    right_width = max(0, total_width - left_width - 3)
+    merged: list[str] = []
+    for i in range(max(len(left), len(right))):
+        lline = left[i] if i < len(left) else ""
+        rline = _truncate(right[i], right_width) if i < len(right) else ""
+        pad = " " * max(0, left_width - visible_length(lline))
+        merged.append(f"{lline}{pad}{divider}{rline}")
+    return merged

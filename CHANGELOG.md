@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-22
+
+### Added
+
+- `termflow.stream` — steady-rate smooth streaming (ported from Code Puppy):
+  - `SteadyDrainer`: adaptive-rate drain engine that buffers bursty producer
+    output (LLM token streams) and releases it smoothly via a background
+    asyncio task, with pause/abort/close semantics and an injectable
+    `is_paused` hook.
+  - `StreamSmoother`: plain-text smoother emitting through a callback.
+  - `SmoothWriter`: file-like proxy that types pre-rendered ANSI text out
+    one visible character at a time, keeping escape sequences atomic.
+  - `split_by_visible`: ANSI-aware visible-budget string splitting.
+- `termflow.themes` — terminal-level theming:
+  - `TerminalPalette` model plus 14 bundled palettes (Catppuccin Mocha/Latte,
+    Tokyo Night, Green Screen, Deep Black, Solarized Light, GitHub Light,
+    Rose Pine Dawn, Ocean, Forest, Sunset, Vaporwave, Purple Puppy,
+    Bubblegum Pink).
+  - OSC 4/10/11 palette engine (`apply_palette`, `reset_palette`) with
+    best-effort terminal restore at process exit.
+  - `TerminalPalette.to_render_style()` bridge deriving a markdown
+    `RenderStyle` from a palette.
+- `termflow.tui` — dependency-free terminal UI toolkit (no curses, no
+  prompt_toolkit):
+  - `raw_mode` / `alt_screen` context managers and cursor helpers.
+  - `read_key` / `parse_key` keyboard input with full escape-sequence
+    parsing (arrows, paging, ctrl-keys) and a Windows `msvcrt` path.
+  - `Menu` / `MenuBuilder`: declarative interactive menus with search
+    filtering, pagination, multi-select, disabled rows, preview pane,
+    highlight callbacks, and fully injectable I/O for testing.
+
+### Changed
+
+- Rewrote the README: corrected package name in install instructions
+  (`termflow-md`), fixed repository URLs, documented the new `stream`,
+  `themes`, and `tui` subsystems.
+
 ## [0.1.11] - 2026-04-18
 
 ### Fixed
