@@ -1,295 +1,240 @@
-<div align="center">
+# termflow
 
-<!-- Logo placeholder -->
-<!-- <img src="assets/logo.png" alt="termflow logo" width="200"/> -->
+**A streaming markdown renderer and terminal UI toolkit for modern terminals.**
 
-# termflow 🌊
-
-**A streaming markdown renderer for modern terminals**
-
-[![PyPI version](https://img.shields.io/pypi/v/termflow.svg)](https://pypi.org/project/termflow/)
-[![Python versions](https://img.shields.io/pypi/pyversions/termflow.svg)](https://pypi.org/project/termflow/)
+[![PyPI version](https://img.shields.io/pypi/v/termflow-md.svg)](https://pypi.org/project/termflow-md/)
+[![Python versions](https://img.shields.io/pypi/pyversions/termflow-md.svg)](https://pypi.org/project/termflow-md/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build status](https://img.shields.io/github/actions/workflow/status/your-username/termflow/ci.yml?branch=main)](https://github.com/your-username/termflow/actions)
 
-*Perfect for rendering LLM output in real-time.*
+termflow renders markdown to ANSI as it arrives, line by line, which makes it
+a natural fit for LLM output. It also ships the surrounding machinery a
+terminal-native application needs: smooth typewriter-style output pacing,
+terminal-wide color theming, and dependency-free interactive menus.
 
-</div>
+Two runtime dependencies: Pygments and wcwidth. No curses, no prompt_toolkit,
+no Rich.
 
----
+## Features
 
-## ✨ Features
+- **Streaming rendering** — parse and render markdown incrementally, line by
+  line, without waiting for the full document
+- **Syntax highlighting** — fenced code blocks highlighted via Pygments, with
+  language detection
+- **GitHub-flavored tables**, ordered/unordered/nested lists, block quotes,
+  and `<think>` blocks for LLM chain-of-thought
+- **Smooth output pacing** (`termflow.stream`) — adaptive-rate buffering that
+  turns bursty token streams into steady typewriter output
+- **Terminal theming** (`termflow.themes`) — bundled 16-color palettes applied
+  terminal-wide via OSC escape sequences, with automatic restore on exit
+- **Interactive menus** (`termflow.tui`) — a declarative menu builder with
+  search, pagination, multi-select, and live preview panes, built on plain
+  ANSI escape codes
+- **OSC 8 hyperlinks** and **OSC 52 clipboard** integration where the
+  terminal supports them
+- **Configurable** via TOML config file or programmatic API
 
-- **📡 Streaming Rendering** - Render markdown as it arrives, line by line
-- **🎨 Syntax Highlighting** - Beautiful code blocks powered by Pygments
-- **📊 Tables** - Full support for GitHub-flavored markdown tables
-- **📝 Lists** - Ordered, unordered, and nested lists with smart indentation
-- **💻 Code Blocks** - Fenced code blocks with language detection and clipboard support
-- **💭 Think Blocks** - Special rendering for `<think>` tags (great for LLM chain-of-thought)
-- **🔗 Hyperlinks** - OSC 8 clickable links in supported terminals
-- **📋 Clipboard** - OSC 52 clipboard integration for code blocks
-- **🎛️ Configurable** - Customize colors, styles, and features via TOML config
-- **⚡ Fast** - Lightweight and performant, minimal dependencies
-
-## 🚀 Quick Installation
-
-### Using uvx (recommended)
-
-```bash
-uvx termflow
-```
-
-### Using pip
+## Installation
 
 ```bash
 pip install termflow-md
 ```
 
-### From source
+Or run the CLI directly:
 
 ```bash
-git clone https://github.com/your-username/termflow.git
-cd termflow
-pip install -e ".[dev]"
+uvx --from termflow-md tf README.md
 ```
 
-## 📖 Usage
-
-### Command Line
+## CLI
 
 ```bash
-# Render a file
-tf README.md
-
-# Pipe markdown content
-echo "# Hello World" | tf
-
-# Pipe from LLM output
-curl -s https://api.example.com/chat | tf
-
-# Set terminal width
-tf -w 100 document.md
-
-# Use a color preset
-tf --style dracula README.md
-
-# Use a syntax highlighting theme
-tf --syntax-style nord file.md
-
-# Disable clipboard integration
-tf --no-clipboard document.md
-
-# List available syntax styles
-tf --list-syntax-styles
+tf README.md                  # render a file
+echo "# Hello" | tf           # render stdin
+tf -w 100 document.md         # fixed width
+tf --style dracula README.md  # color preset
+tf --syntax-style nord doc.md # Pygments style for code blocks
+tf --list-syntax-styles       # available syntax styles
 ```
 
-### CLI Options
+Run `tf --help` for the full option list.
 
-```
-usage: tf [-h] [-w N] [-c PATH] [--style {default,dracula,nord,gruvbox}]
-          [--syntax-style NAME] [--list-syntax-styles] [--no-clipboard]
-          [--no-hyperlinks] [--no-pretty] [-V]
-          [file]
-
-options:
-  -h, --help            show this help message and exit
-  -w, --width N         Terminal width (default: auto-detect)
-  -c, --config PATH     Path to config file
-  --style PRESET        Color style preset (default, dracula, nord, gruvbox)
-  --syntax-style NAME   Pygments syntax highlighting style
-  --list-syntax-styles  List available syntax highlighting styles
-  --no-clipboard        Disable OSC 52 clipboard for code blocks
-  --no-hyperlinks       Disable OSC 8 hyperlinks
-  --no-pretty           Disable pretty code block borders
-  -V, --version         show program's version number and exit
-```
-
-### Programmatic Usage
+## Rendering markdown
 
 ```python
-from termflow import Parser, Renderer, render_markdown
+from termflow import render_markdown
 
-# Quick rendering to stdout
-render_markdown("# Hello World!")
-
-# Render to a file or buffer
-from io import StringIO
-
-output = StringIO()
-render_markdown("# Hello\n\nThis is **bold** text.", output=output)
-print(output.getvalue())
+render_markdown("# Hello World")
 ```
 
-### Streaming Mode
-
-For real-time rendering of streaming content (e.g., LLM responses):
+Streaming, the primary use case:
 
 ```python
-from termflow import Parser, Renderer
 import sys
+from termflow import Parser, Renderer
 
-# Create parser and renderer
 parser = Parser()
 renderer = Renderer(output=sys.stdout, width=80)
 
-# Process markdown line by line as it streams in
 for line in markdown_stream:
-    events = parser.parse_line(line)
-    renderer.render_all(events)
+    renderer.render_all(parser.parse_line(line))
 
-# Finalize to close any open blocks
 renderer.render_all(parser.finalize())
 ```
 
-### Custom Styling
+Custom styling:
 
 ```python
 from termflow import Renderer, RenderStyle, RenderFeatures
-from io import StringIO
 
-# Use a preset style
-style = RenderStyle.dracula()  # or .nord(), .gruvbox()
+style = RenderStyle.dracula()          # or .nord(), .gruvbox(), .default()
+style = RenderStyle(bright="#87ceeb")  # or roll your own
 
-# Or create a custom style
-style = RenderStyle(
-    bright="#87ceeb",   # Main accent color
-    head="#98fb98",     # Heading color
-    symbol="#dda0dd",   # Bullets, borders
-    link="#87cefa",     # Link color
-)
-
-# Configure features
-features = RenderFeatures(
-    clipboard=True,     # OSC 52 clipboard support
-    hyperlinks=True,    # OSC 8 clickable links
-    pretty_pad=True,    # Pretty code block borders
-)
-
-# Create renderer with custom config
-output = StringIO()
 renderer = Renderer(
-    output=output,
     width=100,
     style=style,
-    features=features,
+    features=RenderFeatures(clipboard=True, hyperlinks=True),
 )
 ```
 
-## 🔧 Configuration
+## Smooth streaming output
 
-Create a config file at `~/.config/termflow/config.toml`:
+Token streams arrive in bursts; printing each chunk immediately makes output
+stutter. `termflow.stream` buffers incoming text and drains it at an adaptive
+rate from a background asyncio task: latency stays low when the producer runs
+hot, and output stays smooth when it trickles.
 
-```toml
-# Terminal width (null = auto-detect)
-width = null
-max_width = 120
-
-# Pygments syntax highlighting style
-syntax_style = "monokai"
-
-# Color scheme
-[style]
-bright = "#87ceeb"    # Main accent color
-head = "#98fb98"      # Heading color  
-symbol = "#dda0dd"    # Bullets, table borders, code block borders
-grey = "#808080"      # Muted text
-dark = "#404040"      # Dark accents
-mid = "#a0a0a0"       # Medium text
-light = "#d0d0d0"     # Light accents
-link = "#87cefa"      # Hyperlink color
-error = "#ff6b6b"     # Error messages
-
-# Feature toggles
-[features]
-clipboard = true      # OSC 52 clipboard for code blocks
-hyperlinks = true     # OSC 8 clickable links
-pretty_pad = true     # Pretty unicode borders on code blocks
-```
-
-You can also set the config path via environment variable:
-
-```bash
-export TERMFLOW_CONFIG=/path/to/config.toml
-```
-
-## 🎨 Style Presets
-
-termflow includes several built-in color presets:
-
-| Preset | Description |
-|--------|-------------|
-| `default` | Soft pastel colors |
-| `dracula` | Purple-tinted dark theme |
-| `nord` | Arctic, bluish color palette |
-| `gruvbox` | Retro, earthy colors |
-
-Use them via CLI:
-
-```bash
-tf --style dracula README.md
-```
-
-Or programmatically:
+`SmoothWriter` is a file-like proxy that sits between a `Renderer` (or any
+producer of ANSI text) and the real output stream. Escape sequences are
+emitted atomically, so styling never tears mid-sequence:
 
 ```python
-from termflow import RenderStyle
+import sys
+from termflow import Parser, Renderer
+from termflow.stream import SmoothWriter
 
-style = RenderStyle.dracula()
-style = RenderStyle.nord()
-style = RenderStyle.gruvbox()
+writer = SmoothWriter(sys.stdout)
+writer.start()
+
+renderer = Renderer(output=writer, width=80)
+parser = Parser()
+async for chunk in model_stream:
+    renderer.render_all(parser.parse_line(chunk))
+
+await writer.close()   # waits for the buffer to finish draining
+# writer.abort()       # or: stop typing NOW and drop the backlog
 ```
 
-## 💭 Think Block Support
+`StreamSmoother` does the same for plain text via an emit callback, and both
+accept an `is_paused` hook to hold output while something else owns the
+terminal.
 
-termflow has special support for `<think>` blocks, commonly used in LLM
-chain-of-thought prompting:
+## Terminal theming
 
-```markdown
-<think>
-Let me reason through this step by step...
-1. First, I'll analyze the problem
-2. Then, I'll formulate a solution
-</think>
+`termflow.themes` recolors the whole terminal window — background, foreground,
+and the 16 ANSI palette slots — using xterm OSC sequences supported by iTerm2,
+Terminal.app, kitty, Alacritty, VS Code, GNOME Terminal, and Windows Terminal.
+Unsupported terminals ignore them silently. An atexit handler restores the
+terminal on process exit.
 
-Here's my answer based on my reasoning above.
+```python
+from termflow.themes import PALETTES, apply_palette, reset_palette
+
+apply_palette(PALETTES["catppuccin_mocha"])
+reset_palette()  # back to the terminal's own colors
 ```
 
-Think blocks are rendered with a distinct style to visually separate the
-model's reasoning from its final response.
+Bundled palettes: Catppuccin Mocha/Latte, Tokyo Night, Solarized Light,
+GitHub Light, Rose Pine Dawn, and a set of originals (ocean, forest, sunset,
+vaporwave, green_screen, deep_black, purple_puppy, bubblegum_pink).
 
-## 🦀 Origin
+Each palette bridges to the markdown renderer, so themed output matches the
+terminal chrome:
 
-termflow is a Python port of [streamdown-rs](https://github.com/streamdown-rs/streamdown),
-a high-performance streaming markdown renderer written in Rust. This project brings
-the same streaming rendering capabilities to the Python ecosystem with a clean,
-Pythonic API.
+```python
+from termflow import Renderer
+from termflow.themes import get_palette
 
-## 🤝 Contributing
+palette = get_palette("tokyo_night")
+renderer = Renderer(style=palette.to_render_style())
+```
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Interactive menus
+
+`termflow.tui` provides a menu component built on raw ANSI escape codes:
+alternate screen, arrow-key navigation, incremental search, pagination,
+multi-select, and a live preview pane. Every I/O surface (key source, output
+stream, terminal size) is injectable, so menus are testable without a tty.
+
+```python
+from termflow.tui import MenuBuilder, MenuItem
+
+result = (
+    MenuBuilder("Pick a model")
+    .items([
+        MenuItem("gpt-5", description="fast and smart"),
+        MenuItem("claude", description="thoughtful"),
+        MenuItem("qwen", description="local"),
+    ])
+    .searchable()
+    .page_size(10)
+    .preview(lambda item: f"Details for {item.label}")
+    .run()
+)
+
+if not result.cancelled:
+    print(result.item.value)
+```
+
+Multi-select returns `result.items`; `on_highlight` fires on every cursor
+move (useful for live theme previews); disabled items render dim and are
+skipped by navigation.
+
+## Configuration
+
+Create `~/.config/termflow/config.toml` (or point `TERMFLOW_CONFIG` at a
+path):
+
+```toml
+width = 0            # 0 = auto-detect
+max_width = 120
+syntax_style = "monokai"
+
+[style]
+bright = "#87ceeb"   # main accent (H1/H2)
+head = "#98fb98"     # H3
+symbol = "#dda0dd"   # bullets, borders
+link = "#87cefa"
+error = "#ff6b6b"
+
+[features]
+clipboard = true     # OSC 52 clipboard for code blocks
+hyperlinks = true    # OSC 8 clickable links
+pretty_pad = true    # unicode borders on code blocks
+```
+
+See `examples/config.toml` for the full set of options.
+
+## Origin
+
+termflow began as a Python port of
+[streamdown-rs](https://github.com/streamdown-rs/streamdown), a streaming
+markdown renderer written in Rust, and has since grown into a broader
+terminal UI toolkit.
+
+## Contributing
 
 ```bash
-# Clone and install for development
-git clone https://github.com/your-username/termflow.git
+git clone https://github.com/mpfaffenberger/termflow.git
 cd termflow
 pip install -e ".[dev]"
 
-# Run tests
 pytest tests/ -v
-
-# Run linter
 ruff check .
 ruff format .
 ```
 
-## 📄 License
+Pull requests are welcome.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
 
----
-
-<div align="center">
-
-Made with ❤️ for the terminal
-
-</div>
+MIT. See [LICENSE](LICENSE).

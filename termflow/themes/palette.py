@@ -409,8 +409,13 @@ PALETTES: dict[str, TerminalPalette] = {
 
 
 def get_palette(name: str) -> TerminalPalette | None:
-    """Look up a bundled palette by name (None if unknown)."""
-    return PALETTES.get(name)
+    """Look up a bundled palette by name (None if unknown).
+
+    Lookup is forgiving: case-insensitive, with spaces/hyphens treated
+    as underscores (``"Tokyo-Night"`` finds ``tokyo_night``).
+    """
+    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+    return PALETTES.get(normalized)
 
 
 def palette_names() -> list[str]:

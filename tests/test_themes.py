@@ -42,6 +42,10 @@ class TestPaletteRegistry:
         assert get_palette("ocean") is PALETTES["ocean"]
         assert get_palette("nope") is None
 
+    def test_get_palette_is_forgiving(self):
+        assert get_palette("Tokyo-Night") is PALETTES["tokyo_night"]
+        assert get_palette(" catppuccin mocha ") is PALETTES["catppuccin_mocha"]
+
     def test_palette_names_order(self):
         assert palette_names() == list(PALETTES)
 
