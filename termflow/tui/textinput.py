@@ -218,6 +218,10 @@ class TextInput:
 
     def _frame(self) -> list[str]:
         width, height = self._size()
+        # One column of right padding: writing the terminal's last column
+        # arms deferred wrap and the trailing clear-to-EOL would erase
+        # the final character (see Menu._frame).
+        width = max(10, width - 1)
         s = self._style
         lines = [
             f"{fg_color(s.bright)}{BOLD_ON}{self._title}{RESET}",

@@ -100,6 +100,47 @@ class TestMenuResize:
         assert len(_frames(out.getvalue())) == 1  # idle ticks stay silent
 
 
+class TestRightEdgePadding:
+    """Full-width content must stop one column short of the terminal edge.
+
+    Writing the last column arms xterm's deferred-wrap state, where the
+    trailing clear-to-EOL erases the character just written -- the
+    'tok' -> 'to' clipping bug. StringIO can't reproduce the terminal
+    behavior, so we pin the contract: no painted line ever reaches the
+    full reported width.
+    """
+
+    def test_menu_lines_stay_one_column_short(self):
+        out = StringIO()
+        (
+            MenuBuilder("Edge")
+            .items([MenuItem("x" * 120, description="y" * 120)])
+            .key_source(iter(["escape"]).__next__)
+            .output(out)
+            .size(lambda: (40, 12))
+            .alt_screen(False)
+            .run()
+        )
+        for frame in _frames(out.getvalue()):
+            for line in frame.replace("\x1b[J", "").split("\r\n"):
+                assert visible_length(line.replace("\x1b[K", "")) <= 39
+
+    def test_textinput_lines_stay_one_column_short(self):
+        out = StringIO()
+        (
+            TextInputBuilder("T" * 80)
+            .initial("v" * 80)
+            .key_source(iter(["end", "escape"]).__next__)
+            .output(out)
+            .size(lambda: (40, 12))
+            .alt_screen(False)
+            .run()
+        )
+        for frame in _frames(out.getvalue()):
+            for line in frame.replace("\x1b[J", "").split("\r\n"):
+                assert visible_length(line.replace("\x1b[K", "")) <= 39
+
+
 class TestTextInputResize:
     def test_resize_repaints_at_new_width(self):
         sizes = {"wh": (80, 24)}

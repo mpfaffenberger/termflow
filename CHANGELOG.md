@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-23
+
+### Fixed
+
+- One column of right padding in `Menu` and `TextInput` frames.
+  Full-width lines armed xterm's deferred-wrap state, where the
+  trailing clear-to-EOL erased the just-written final character
+  (`tok` -> `to`). Frames now stop one column short of the edge.
+
 ## [0.5.0] - 2026-08-23
 
 ### Added

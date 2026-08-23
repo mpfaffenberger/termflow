@@ -238,6 +238,11 @@ class Menu:
 
     def _frame(self) -> list[str]:
         cols, rows_avail = self._size()
+        # Paint one column short of the terminal edge. Writing the last
+        # column arms xterm's deferred-wrap state, where the trailing
+        # clear-to-EOL erases the character just written -- full-width
+        # lines would lose their final char on real terminals.
+        cols = max(10, cols - 1)
         rows = self._filtered()
         self._clamp_cursor(rows)
         s = self._style
