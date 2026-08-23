@@ -42,7 +42,7 @@ from termflow.ansi.color import fg_color
 from termflow.ansi.utils import visible_length
 from termflow.render.style import RenderStyle
 from termflow.tui.keys import Key, read_key
-from termflow.tui.menu import _truncate
+from termflow.tui.menu import RESIZE_POLL_S, _truncate
 from termflow.tui.terminal import (
     CLEAR_TO_EOL,
     CURSOR_HOME,
@@ -99,7 +99,7 @@ class TextInput:
         self._footer_hint = footer_hint
         self._key_handlers = dict(key_handlers or {})
         self._output = output if output is not None else sys.stdout
-        self._read_key = key_source or (lambda: read_key())
+        self._read_key = key_source or (lambda: read_key(timeout=RESIZE_POLL_S))
         self._size = size or terminal_size
         self._use_alt_screen = use_alt_screen
 
@@ -252,9 +252,21 @@ class TextInput:
     def _loop(self) -> TextInputResult:
         while True:
             self._paint()
-            result = self._handle_key(self._read_key())
+            result = self._handle_key(self._wait_key())
             if result is not None:
                 return result
+
+    def _wait_key(self) -> str:
+        """Block for a key, repainting whenever the terminal resizes."""
+        last_size = self._size()
+        while True:
+            key = self._read_key()
+            if key:
+                return key
+            size = self._size()
+            if size != last_size:
+                last_size = size
+                self._paint()
 
     def _commit(self) -> TextInputResult | None:
         if self._validator is not None:

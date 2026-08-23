@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import IO
 
 try:  # POSIX
@@ -130,8 +131,12 @@ def _utf8_expected_len(first: int) -> int:
     return 1
 
 
-def _read_char_fd(fd: int, timeout: float | None = None) -> str:
+def _read_char_fd(fd: int, timeout: float | None = None) -> str | None:
     """Read one character (possibly multibyte UTF-8) straight from the fd.
+
+    Returns ``None`` when ``timeout`` elapses with no input, and ``""``
+    on EOF -- callers need to tell those apart (a timeout means "poll
+    again", EOF means "the terminal went away").
 
     Bypasses Python's buffered text stream entirely: mixing
     ``stream.read(1)`` with ``select()`` on the fd is a trap, because the
@@ -140,7 +145,7 @@ def _read_char_fd(fd: int, timeout: float | None = None) -> str:
     nothing is pending and an arrow key looks like a lone ESC.
     """
     if timeout is not None and not select.select([fd], [], [], timeout)[0]:
-        return ""
+        return None
     data = os.read(fd, 1)
     if not data:
         return ""
@@ -172,26 +177,46 @@ def _read_escape_tail_fd(fd: int, timeout: float) -> str:
     return tail
 
 
-def _read_key_windows() -> str | None:  # pragma: no cover - Windows only
+def _read_key_windows(
+    timeout: float | None = None,
+) -> str | None:  # pragma: no cover - Windows only
+    if timeout is not None:
+        deadline = time.monotonic() + timeout
+        while not msvcrt.kbhit():  # type: ignore[attr-defined]
+            if time.monotonic() >= deadline:
+                return ""
+            time.sleep(0.01)
     ch = msvcrt.getwch()  # type: ignore[attr-defined]
     if ch in ("\x00", "\xe0"):
         return _WINDOWS_SCAN_CODES.get(msvcrt.getwch())  # type: ignore[attr-defined]
     return parse_key(ch)
 
 
-def read_key(stream: IO[str] | None = None, escape_timeout: float = 0.02) -> str:
+def read_key(
+    stream: IO[str] | None = None,
+    escape_timeout: float = 0.02,
+    timeout: float | None = None,
+) -> str:
     """Block until a key is pressed and return its name.
 
     Unrecognized escape sequences are swallowed and the read retries,
     so callers always get something meaningful back.
+
+    When ``timeout`` is given and no key arrives in time, returns ``""``
+    so callers can interleave polling work (terminal-resize detection)
+    with key waits. EOF still reads as :data:`Key.ESCAPE`.
     """
     stream = stream if stream is not None else sys.stdin
     fd = _fileno(stream) if _HAS_SELECT else None
     while True:
         if _HAS_MSVCRT and stream is sys.stdin:  # pragma: no cover - Windows
-            key = _read_key_windows()
+            key = _read_key_windows(timeout)
+            if key == "" and timeout is not None:
+                return ""
         elif fd is not None:
-            char = _read_char_fd(fd)
+            char = _read_char_fd(fd, timeout)
+            if char is None:
+                return ""  # timed out; caller may poll and retry
             if not char:
                 return Key.ESCAPE  # EOF: treat as cancel.
             tail = _read_escape_tail_fd(fd, escape_timeout) if char == "\x1b" else ""

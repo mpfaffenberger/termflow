@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-23
+
+### Added
+
+- Terminal-resize detection for all TUI widgets. `read_key` accepts a
+  `timeout` (returns `""` when it elapses; EOF still reads as Escape),
+  and `Menu`/`TextInput` key waits now tick every `RESIZE_POLL_S`
+  (0.25s) to recheck the terminal size, repainting immediately on
+  change -- no keypress needed. Signal-free, so it works from worker
+  threads and on Windows (`msvcrt.kbhit` polling). Injected test key
+  sources are unaffected; scripted `""` keys simulate idle ticks.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added

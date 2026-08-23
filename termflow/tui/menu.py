@@ -43,6 +43,10 @@ from termflow.tui.terminal import (
     terminal_size,
 )
 
+#: How long one key wait may block before the loop rechecks the
+#: terminal size. Resizes repaint within this interval at the latest.
+RESIZE_POLL_S = 0.25
+
 _POINTER = "> "
 _NO_POINTER = "  "
 _CHECKED = "◉ "
@@ -122,7 +126,7 @@ class Menu:
         self._list_width = list_width
         self._filter_fn = filter_fn
         self._output = output if output is not None else sys.stdout
-        self._read_key = key_source or (lambda: read_key())
+        self._read_key = key_source or (lambda: read_key(timeout=RESIZE_POLL_S))
         self._size = size or terminal_size
         self._use_alt_screen = use_alt_screen
 
@@ -307,12 +311,30 @@ class Menu:
         self._fire_highlight(rows)
         while True:
             self._paint()
-            key = self._read_key()
+            key = self._wait_key()
             rows = self._filtered()
             self._clamp_cursor(rows)
             result = self._handle_key(key, rows)
             if result is not None:
                 return result
+
+    def _wait_key(self) -> str:
+        """Block for a key, repainting whenever the terminal resizes.
+
+        The default key source times out every :data:`RESIZE_POLL_S`
+        seconds (returning ``""``), giving this loop a chance to notice
+        a size change and repaint without any keypress. Injected test
+        sources that never return ``""`` behave exactly as before.
+        """
+        last_size = self._size()
+        while True:
+            key = self._read_key()
+            if key:
+                return key
+            size = self._size()
+            if size != last_size:
+                last_size = size
+                self._paint()
 
     def _handle_key(self, key: str, rows: list[tuple[int, MenuItem]]) -> MenuResult | None:
         handler = self._key_handlers.get(key)
