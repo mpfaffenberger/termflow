@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
+### Added
+
+- `termflow.diff` — unified-diff parsing and theme-aware ANSI
+  rendering. `parse_diff`/`classify_line`/`detect_language` handle
+  structure, `DiffRenderer` renders blocks with syntax-highlighted
+  tokens over addition/deletion backgrounds, and `DiffStream` renders
+  incrementally as chunks arrive (language re-sniffed per file header,
+  so multi-file diffs switch highlighting mid-stream). `DiffTheme`
+  carries the colors: background hexes, marker brightness, and
+  optional per-line-type foreground tints (also adopted from a
+  highlighter's `diff_line_tints` attribute, letting themed
+  highlighters carry their own diff accents). Convenience:
+  `render_diff()` and the `brighten_hex()` color helper.
+
 ## [0.2.6] - 2026-08-22
 
 ### Changed
