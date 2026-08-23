@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-23
+
+### Added
+
+- `termflow.tui.textinput` — a single-line text input widget
+  (`TextInput` / `TextInputBuilder` / `TextInputResult`) matching the
+  `Menu` contract: injectable key source, output stream, and terminal
+  size for fully headless testing. Supports cursor movement (arrows,
+  Home/End, Ctrl+A/E/B/F), deletion (Backspace, Delete, Ctrl+U/K/W
+  with word-wise kill), placeholder text, masked entry for secrets,
+  commit-time validation with inline error display, horizontal
+  scrolling that keeps the cursor visible for values wider than the
+  terminal (wcwidth-aware), and custom `on_key` handlers whose results
+  carry the triggering key so callers can compose multi-field forms.
+  Every painted line is width-clamped by construction.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added

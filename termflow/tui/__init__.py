@@ -6,6 +6,7 @@ prompt_toolkit -- just escape sequences and small, injectable pieces.
 * :mod:`termflow.tui.terminal` -- raw mode, alt screen, cursor control.
 * :mod:`termflow.tui.keys` -- blocking key reads + escape parsing.
 * :mod:`termflow.tui.menu` -- :class:`MenuBuilder` and friends.
+* :mod:`termflow.tui.textinput` -- :class:`TextInputBuilder` line editing.
 """
 
 from termflow.tui.keys import Key, parse_key, read_key
@@ -16,6 +17,7 @@ from termflow.tui.terminal import (
     terminal_session,
     terminal_size,
 )
+from termflow.tui.textinput import TextInput, TextInputBuilder, TextInputResult
 
 __all__ = [
     "Key",
@@ -23,6 +25,9 @@ __all__ = [
     "MenuBuilder",
     "MenuItem",
     "MenuResult",
+    "TextInput",
+    "TextInputBuilder",
+    "TextInputResult",
     "alt_screen",
     "parse_key",
     "raw_mode",
