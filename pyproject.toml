@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "termflow-md"
-version = "0.8.0"
+version = "0.9.0"
 description = "A streaming markdown renderer for modern terminals"
 readme = "README.md"
 license = "MIT"

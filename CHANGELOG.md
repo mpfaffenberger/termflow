@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-24
+
+### Added
+
+- `termflow.tui.completion` -- a minimal, duck-typed completion
+  protocol shaped like the prompt_toolkit subset real completers use:
+  `Document` (text + cursor slicing, `get_word_before_cursor`),
+  `Completion` (relative non-positive `start_position`), `Completer`,
+  `CompleteEvent`, and `merge_completers`. Migrating a prompt_toolkit
+  completer is an import swap; foreign completer objects keep working
+  via duck typing.
+
 ## [0.8.0] - 2026-08-24
 
 ### Added
