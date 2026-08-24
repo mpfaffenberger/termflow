@@ -35,10 +35,11 @@ class TestInlineMenu:
 
         _, raw = drive(["down", "enter"])
         climbs = re.findall(r"\r\x1b\[(\d+)A", raw)
-        # One repaint after the down-arrow: climb == painted line count.
         assert climbs, "no cursor-up repaint found"
-        first_frame = raw.split("\r\x1b[")[0]
-        assert int(climbs[0]) == first_frame.count("\r\n")
+        # The climb must equal the previous paint's line count, so the
+        # repaint lands exactly on the menu's first row.
+        first_paint = re.split(r"\r\x1b\[\d+A", raw)[0]
+        assert int(climbs[0]) == first_paint.count("\r\n")
 
     def test_selection_still_works(self):
         result, _ = drive(["down", "enter"])
