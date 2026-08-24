@@ -84,12 +84,12 @@ class TestKillCommands:
         assert result.value == "a"
 
     def test_ctrl_w_deletes_word_back(self):
-        keys = list("path/to/file") + ["ctrl-w", "enter"]
+        keys = [*"path/to/file", "ctrl-w", "enter"]
         _, result, _ = drive(keys)
         assert result.value == "path/to/"
 
     def test_ctrl_w_eats_trailing_separators(self):
-        keys = list("a b  ") + ["ctrl-w", "enter"]
+        keys = [*"a b  ", "ctrl-w", "enter"]
         _, result, _ = drive(keys)
         assert result.value == "a "
 
@@ -123,13 +123,14 @@ class TestRendering:
         assert "ghost" not in final_frame
 
     def test_mask_hides_value(self):
-        _, result, raw = drive(list("secret") + ["enter"], mask="*")
+        _, result, raw = drive([*"secret", "enter"], mask="*")
         assert result.value == "secret"
         assert "secret" not in raw
         assert "******" in raw.replace("\x1b[K", "")
 
     def test_no_line_exceeds_terminal_width(self):
-        keys = list("a long value that will definitely overflow") + [
+        keys = [
+            *"a long value that will definitely overflow",
             "home",
             "end",
             "enter",
@@ -141,7 +142,7 @@ class TestRendering:
 
     def test_long_value_scrolls_to_keep_cursor_visible(self):
         text = "abcdefghijklmnopqrstuvwxyz0123456789"
-        widget, result, raw = drive(list(text) + ["enter"], size=lambda: (20, 10))
+        _widget, result, raw = drive([*text, "enter"], size=lambda: (20, 10))
         assert result.value == text
         # The tail of the value (where the cursor lives) must be visible
         # in the final frame; the head scrolled away.
@@ -150,7 +151,7 @@ class TestRendering:
         assert "abc" not in final
 
     def test_wide_characters_do_not_break_layout(self):
-        keys = list("日本語テキスト") + ["home", "right", "enter"]
+        keys = [*"日本語テキスト", "home", "right", "enter"]
         _, result, raw = drive(keys, size=lambda: (16, 10))
         assert result.value == "日本語テキスト"
         for line in frame_lines(raw):
@@ -178,7 +179,7 @@ class TestFormComposition:
         assert result == TextInputResult(value="ab", key="down")
 
     def test_on_key_handler_may_decline(self):
-        def noop(widget):
+        def noop(_widget):
             return None
 
         _, result, _ = drive(["tab", "x", "enter"], on_key=("tab", noop))
@@ -189,7 +190,7 @@ class TestFormComposition:
             widget.set_text("fresh")
             return None
 
-        widget, result, _ = drive(["o", "l", "d", "tab", "!", "enter"], on_key=("tab", reset))
+        _widget, result, _ = drive(["o", "l", "d", "tab", "!", "enter"], on_key=("tab", reset))
         assert result.value == "fresh!"
 
 
@@ -198,7 +199,7 @@ def test_builder_on_key_signature_helper():
     script = iter(["x", "enter"])
     result = (
         TextInputBuilder("direct")
-        .on_key("ctrl-t", lambda w: None)
+        .on_key("ctrl-t", lambda _w: None)
         .key_source(lambda: next(script))
         .output(StringIO())
         .size(lambda: (40, 8))

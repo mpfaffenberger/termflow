@@ -265,10 +265,7 @@ class Menu:
         # Narrow terminals collapse the preview pane entirely: the list
         # takes the full width (see termflow.tui.layout).
         show_preview = self._preview is not None and not collapsed(cols)
-        if show_preview:
-            list_width = self._list_width or max(20, cols // 2)
-        else:
-            list_width = cols
+        list_width = (self._list_width or max(20, cols // 2)) if show_preview else cols
         body = [
             self._render_row(page_start + offset, index, item, list_width - 1)
             for offset, (index, item) in enumerate(page)

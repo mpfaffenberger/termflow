@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import StringIO
+from typing import ClassVar
 
 from termflow.ansi.utils import visible_length
 from termflow.tui import (
@@ -28,8 +29,8 @@ class TestCollapsed:
 
 
 class TestSplitFrame:
-    LEFT = ["alpha", "beta"]
-    RIGHT = ["one", "two", "three"]
+    LEFT: ClassVar[list[str]] = ["alpha", "beta"]
+    RIGHT: ClassVar[list[str]] = ["one", "two", "three"]
 
     def test_wide_shows_both_panes_with_divider(self):
         frame = split_frame(self.LEFT, self.RIGHT, width=100, list_width=20, focus="left")
