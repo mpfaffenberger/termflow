@@ -32,9 +32,11 @@ if TYPE_CHECKING:
 
 from termflow.ansi.codes import BOLD_ON, DIM_ON, RESET
 from termflow.ansi.color import fg_color
-from termflow.ansi.utils import visible_length
 from termflow.render.style import RenderStyle
 from termflow.tui.keys import Key, read_key
+from termflow.tui.layout import collapsed
+from termflow.tui.layout import truncate as _truncate
+from termflow.tui.layout import two_columns as _two_columns
 from termflow.tui.terminal import (
     CLEAR_TO_EOL,
     CURSOR_HOME,
@@ -257,10 +259,13 @@ class Menu:
         page_size = self._effective_page_size()
         page_start = (self._cursor // page_size) * page_size
         page = rows[page_start : page_start + page_size]
-        if self._preview is None:  # noqa: SIM108 - chained or reads worse inline
-            list_width = cols
-        else:
+        # Narrow terminals collapse the preview pane entirely: the list
+        # takes the full width (see termflow.tui.layout).
+        show_preview = self._preview is not None and not collapsed(cols)
+        if show_preview:
             list_width = self._list_width or max(20, cols // 2)
+        else:
+            list_width = cols
         body = [
             self._render_row(page_start + offset, index, item, list_width - 1)
             for offset, (index, item) in enumerate(page)
@@ -268,7 +273,7 @@ class Menu:
         if not body:
             body = [f"{DIM_ON}(no matches){RESET}"]
 
-        if self._preview is not None and rows:
+        if show_preview and rows:
             preview_text = self._preview_text(rows[self._cursor][1])
             body = _two_columns(body, preview_text.splitlines(), list_width, cols)
 
@@ -484,38 +489,3 @@ class MenuBuilder:
     def run(self) -> MenuResult:
         """Convenience: build and run in one call."""
         return self.build().run()
-
-
-# -- layout helpers -----------------------------------------------------------
-def _truncate(line: str, width: int) -> str:
-    """Clip a styled line to ``width`` visible cells, resetting styles."""
-    if visible_length(line) <= width:
-        return line
-    from termflow.ansi.utils import ANSI_ESCAPE_RE
-
-    out: list[str] = []
-    used = 0
-    i = 0
-    while i < len(line) and used < width - 1:
-        m = ANSI_ESCAPE_RE.match(line, i)
-        if m:
-            out.append(m.group(0))
-            i = m.end()
-            continue
-        out.append(line[i])
-        used += visible_length(line[i])
-        i += 1
-    return "".join(out) + f"{RESET}…"
-
-
-def _two_columns(left: list[str], right: list[str], left_width: int, total_width: int) -> list[str]:
-    """Join two line-lists side by side, padding the left column."""
-    divider = f" {DIM_ON}│{RESET} "
-    right_width = max(0, total_width - left_width - 3)
-    merged: list[str] = []
-    for i in range(max(len(left), len(right))):
-        lline = left[i] if i < len(left) else ""
-        rline = _truncate(right[i], right_width) if i < len(right) else ""
-        pad = " " * max(0, left_width - visible_length(lline))
-        merged.append(f"{lline}{pad}{divider}{rline}")
-    return merged

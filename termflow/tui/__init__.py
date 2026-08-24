@@ -7,9 +7,17 @@ prompt_toolkit -- just escape sequences and small, injectable pieces.
 * :mod:`termflow.tui.keys` -- blocking key reads + escape parsing.
 * :mod:`termflow.tui.menu` -- :class:`MenuBuilder` and friends.
 * :mod:`termflow.tui.textinput` -- :class:`TextInputBuilder` line editing.
+* :mod:`termflow.tui.layout` -- responsive split-pane composition.
 """
 
 from termflow.tui.keys import Key, parse_key, read_key
+from termflow.tui.layout import (
+    COLLAPSE_BELOW,
+    collapsed,
+    split_frame,
+    truncate,
+    two_columns,
+)
 from termflow.tui.menu import Menu, MenuBuilder, MenuItem, MenuResult
 from termflow.tui.terminal import (
     alt_screen,
@@ -20,6 +28,7 @@ from termflow.tui.terminal import (
 from termflow.tui.textinput import TextInput, TextInputBuilder, TextInputResult
 
 __all__ = [
+    "COLLAPSE_BELOW",
     "Key",
     "Menu",
     "MenuBuilder",
@@ -29,9 +38,13 @@ __all__ = [
     "TextInputBuilder",
     "TextInputResult",
     "alt_screen",
+    "collapsed",
     "parse_key",
     "raw_mode",
     "read_key",
+    "split_frame",
     "terminal_session",
     "terminal_size",
+    "truncate",
+    "two_columns",
 ]

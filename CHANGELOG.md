@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-24
+
+### Added
+
+- `termflow.tui.layout` -- responsive split-pane composition for
+  master-detail TUIs. `split_frame(left, right, width=..., focus=...)`
+  renders panes side by side on wide terminals and only the focused
+  pane at full width below `COLLAPSE_BELOW` (76) columns, enabling
+  two-phase pick-then-detail flows on phone-sized terminals.
+  `truncate` and `two_columns` are now public here (re-exported for
+  compatibility from `termflow.tui.menu`).
+- `Menu` collapses its preview pane on narrow terminals: the list
+  takes the full width, and resizes across the threshold toggle the
+  preview live.
+
 ## [0.5.1] - 2026-08-23
 
 ### Fixed
