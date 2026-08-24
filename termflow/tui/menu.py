@@ -114,6 +114,7 @@ class Menu:
         key_source: Callable[[], str] | None = None,
         size: Callable[[], tuple[int, int]] | None = None,
         use_alt_screen: bool = True,
+        inline: bool = False,
     ) -> None:
         self._title = title
         self._items = list(items)
@@ -130,7 +131,9 @@ class Menu:
         self._output = output if output is not None else sys.stdout
         self._read_key = key_source or (lambda: read_key(timeout=RESIZE_POLL_S))
         self._size = size or terminal_size
-        self._use_alt_screen = use_alt_screen
+        self._use_alt_screen = use_alt_screen and not inline
+        self._inline = inline
+        self._painted_lines = 0
 
         self._cursor = max(0, min(initial_index, max(len(self._items) - 1, 0)))
         self._search = ""
@@ -296,10 +299,16 @@ class Menu:
             return ""
 
     def _paint(self) -> None:
-        # Full repaint: home the cursor, redraw every line with
-        # clear-to-eol, then clear anything below the frame.
+        # Full repaint: home the cursor (or, inline, climb back to the
+        # first painted row), redraw every line with clear-to-eol, then
+        # clear anything below the frame.
         frame = self._frame()
-        payload = CURSOR_HOME + "".join(f"{line}{CLEAR_TO_EOL}\r\n" for line in frame) + "\x1b[J"
+        if self._inline:
+            home = f"\r\x1b[{self._painted_lines}A" if self._painted_lines else "\r"
+            self._painted_lines = len(frame)
+        else:
+            home = CURSOR_HOME
+        payload = home + "".join(f"{line}{CLEAR_TO_EOL}\r\n" for line in frame) + "\x1b[J"
         try:
             self._output.write(payload)
             self._output.flush()
@@ -308,9 +317,17 @@ class Menu:
 
     # -- event loop ---------------------------------------------------------
     def run(self) -> MenuResult:
-        """Run the menu until the user selects or cancels."""
+        """Run the menu until the user selects or cancels.
+
+        Inline menus paint below the current cursor position (inquirer
+        style) and repaint in place, leaving the transcript above them
+        untouched; the final frame scrolls into history on exit.
+        """
         if self._use_alt_screen:
             with raw_mode(), alt_screen(self._output):
+                return self._loop()
+        if self._inline:
+            with raw_mode():
                 return self._loop()
         return self._loop()
 
@@ -481,6 +498,11 @@ class MenuBuilder:
 
     def alt_screen(self, enabled: bool = True) -> MenuBuilder:
         self._kwargs["use_alt_screen"] = enabled
+        return self
+
+    def inline(self, enabled: bool = True) -> MenuBuilder:
+        """Paint at the cursor (inquirer style) instead of owning the screen."""
+        self._kwargs["inline"] = enabled
         return self
 
     def build(self) -> Menu:

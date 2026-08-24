@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-24
+
+### Added
+
+- Inline rendering mode for `Menu` (`MenuBuilder.inline()`): paints at
+  the current cursor position inquirer-style and repaints in place via
+  cursor-up, leaving the transcript above untouched -- for approval
+  prompts and other flows that must not own the whole screen. Raw mode
+  is applied without the alternate screen; the final frame scrolls
+  into history on exit.
+
 ## [0.6.0] - 2026-08-24
 
 ### Added
