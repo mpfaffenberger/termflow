@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-24
+
+### Added
+
+- `termflow.tui.pager` -- `Pager` / `PagerBuilder` / `PagerResult`: a
+  scrollable read-only text viewer following the same injectable,
+  headless-testable contract as `Menu` and `TextInput`. Line and
+  viewport scrolling (arrows, `j`/`k`, PageUp/PageDown, `b`/`f`/Space,
+  half-page `d`/`u`, `g`/`G`/Home/End), a Top/Bot/percent position
+  indicator, ANSI-safe width truncation on every painted line, resize
+  repaints via the poll heartbeat, and custom `on_key` handlers that
+  can end the run with a `PagerResult(key=...)` for caller-side
+  composition.
+
 ## [0.7.0] - 2026-08-24
 
 ### Added
