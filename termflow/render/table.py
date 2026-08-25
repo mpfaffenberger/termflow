@@ -17,6 +17,8 @@ from termflow.ansi import BOLD_OFF, BOLD_ON, RESET, fg_color, visible_length
 from termflow.ansi.utils import wrap_ansi
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from termflow.render.style import RenderStyle
 
 # =============================================================================
@@ -52,7 +54,7 @@ class TableRenderState:
         self.is_header_done = False
         self.row_count = 0
 
-    def update_widths(self, cells: list[str] | tuple[str, ...]) -> None:
+    def update_widths(self, cells: Sequence[str]) -> None:
         """Update column widths based on cell contents."""
         for i, cell in enumerate(cells):
             width = visible_length(str(cell).strip())
@@ -119,7 +121,7 @@ class TableRenderState:
 
         self.column_widths = new_widths
 
-    def set_alignments(self, alignments: list[str] | tuple[str, ...]) -> None:
+    def set_alignments(self, alignments: Sequence[str]) -> None:
         """Set column alignments."""
         self.alignments = list(alignments)
 
@@ -176,7 +178,7 @@ def _wrap_cell(text: str, width: int) -> list[str]:
 
 
 def render_table_row(
-    cells: list[str] | tuple[str, ...],
+    cells: Sequence[str],
     state: TableRenderState,
     _width: int,  # Reserved for future width constraints
     margin: str,
@@ -262,9 +264,9 @@ def render_table_bottom(
 
 
 def render_table_complete(
-    header: list[str] | tuple[str, ...],
-    rows: list[list[str] | tuple[str, ...]],
-    alignments: list[str],
+    header: Sequence[str],
+    rows: Sequence[Sequence[str]],
+    alignments: Sequence[str],
     width: int,
     margin: str,
     style: RenderStyle,

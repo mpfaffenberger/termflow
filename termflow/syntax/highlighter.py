@@ -326,7 +326,8 @@ class Highlighter:
         """
         lexer = self.get_lexer(language)
         # Highlight and strip trailing whitespace/newlines added by Pygments
-        result = highlight(line, lexer, self._formatter)
+        # (str() pins the type: pygments' highlight() is untyped -> Any).
+        result = str(highlight(line, lexer, self._formatter))
         return result.rstrip("\n\r")
 
     def highlight_block(self, code: str, language: str = "text") -> str:
@@ -347,7 +348,7 @@ class Highlighter:
             >>> colored = h.highlight_block(code, "python")
         """
         lexer = self.get_lexer(language)
-        return highlight(code, lexer, self._formatter)
+        return str(highlight(code, lexer, self._formatter))
 
     def highlight_lines(self, lines: list[str], language: str = "text") -> list[str]:
         """Highlight multiple lines of code.

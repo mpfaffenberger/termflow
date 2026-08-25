@@ -78,11 +78,12 @@ def visible_length(text: str) -> int:
         4
     """
     stripped = visible(text)
-    width = wcswidth(stripped)
+    # int() pins the type: wcwidth ships without annotations -> Any.
+    width = int(wcswidth(stripped))
     # wcswidth returns -1 if string contains non-printable characters
     # In that case, fall back to counting characters individually
     if width < 0:
-        width = sum(max(0, wcwidth(c)) for c in stripped)
+        width = sum(max(0, int(wcwidth(c))) for c in stripped)
     return width
 
 
