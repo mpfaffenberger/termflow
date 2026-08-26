@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
@@ -38,7 +38,6 @@ jobs:
 
       - name: Type check with mypy
         run: uv run mypy termflow --ignore-missing-imports
-        continue-on-error: true # Optional for now
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
@@ -48,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
 
       - name: Build package
         run: uv build
@@ -60,7 +59,7 @@ jobs:
         run: uvx twine check dist/*
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dist
           path: dist/
