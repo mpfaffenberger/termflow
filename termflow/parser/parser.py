@@ -157,36 +157,42 @@ class Parser:
         if not line.strip():
             return self._handle_empty_line()
 
-        # Track previous empty state
+        # Track previous empty state until the current line's block context has
+        # been classified. Context transitions use this marker to close lists
+        # after a blank line without splitting loose list items.
         was_prev_empty = self._prev_was_empty
-        self._prev_was_empty = False
         self.state.last_line_empty = False
 
         # Try block constructs in order of precedence
         if self._try_parse_think_block(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_code_fence(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_heading(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_hr(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_block_quote(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_list_item(line):
-            return list(self._events)
+            return self._finish_line()
         if self._try_parse_table(line):
-            return list(self._events)
+            return self._finish_line()
 
         # Check for indented code block (only after empty line)
         if was_prev_empty and self._try_parse_indented_code(line):
-            return list(self._events)
+            return self._finish_line()
 
         # Exit special contexts for plain text
         self._exit_block_contexts()
 
         # Parse as inline content (paragraph text)
         self._parse_inline_content(line)
+        return self._finish_line()
+
+    def _finish_line(self) -> list[ParseEvent]:
+        """Return current events and consume the previous-empty marker."""
+        self._prev_was_empty = False
         return list(self._events)
 
     def parse_document(self, content: str) -> list[ParseEvent]:
