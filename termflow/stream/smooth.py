@@ -53,6 +53,8 @@ class SteadyDrainer:
         self._closed = False
         self._task: asyncio.Task | None = None
         self._pending = ""
+        # Units released per tick for the current burst; see _run().
+        self._quota = 0
 
     def start(self) -> None:
         """Spin up the background drain task (idempotent)."""
@@ -97,6 +99,7 @@ class SteadyDrainer:
                         # for, and close() returns immediately instead of
                         # stalling the producer.
                         self._flush_all()
+                        self._quota = 0
                     was_paused = True
                     if self._closed and self._remaining_units() <= 0:
                         return
@@ -111,11 +114,22 @@ class SteadyDrainer:
                         return
                     await asyncio.sleep(self._tick)
                     continue
-                n = max(
+                # Per-tick quota is sized from the backlog's high-water mark
+                # since the buffer was last empty, so the drain is LINEAR and
+                # really finishes within the catch-up window. Re-deriving it
+                # from the shrinking remainder every tick would decay
+                # exponentially and leave the last ``catch_up_ticks`` chars
+                # crawling out at ``min_units`` per tick.
+                self._quota = max(
+                    self._quota,
                     self._min_units,
                     math.ceil(remaining / self._catch_up_ticks),
                 )
-                self._drain_units(n)
+                self._drain_units(self._quota)
+                if self._remaining_units() <= 0:
+                    # Burst fully typed: forget its pace so the next one sets
+                    # its own instead of inheriting a stale sprint.
+                    self._quota = 0
                 await asyncio.sleep(self._tick)
         except asyncio.CancelledError:
             # Cancellation means interrupt/shutdown: stop typing NOW and

@@ -82,6 +82,56 @@ class TestStreamSmoother:
         assert "".join(chunks) == "a" * 500
         assert len(chunks) > 1  # smoothed, not dumped in one write
 
+    def test_burst_drains_linearly_within_catch_up_window(self):
+        """A burst finishes in ~catch_up_ticks ticks, not a decaying tail.
+
+        Re-deriving the quota from the shrinking remainder each tick makes
+        the drain exponential: ``catch_up_ticks * ln(N / catch_up_ticks)``
+        ticks of decay plus ``catch_up_ticks`` more at the 1-char floor.
+        Each emitted chunk is one tick, so counting chunks pins the shape.
+        """
+        chunks: list[str] = []
+        catch_up_ticks = 50
+
+        async def scenario():
+            smoother = StreamSmoother(
+                chunks.append,
+                tick_interval=0.001,
+                catch_up_seconds=0.001 * catch_up_ticks,
+                min_chars_per_tick=1,
+            )
+            smoother.start()
+            smoother.feed("a" * 1000)
+            await smoother.close()
+
+        asyncio.run(scenario())
+        assert "".join(chunks) == "a" * 1000
+        assert len(chunks) <= catch_up_ticks + 1  # decay would need ~200
+
+    def test_quota_resets_once_buffer_empties(self):
+        """A trickle after a big burst is typed at its own pace, not the burst's."""
+        chunks: list[str] = []
+
+        async def scenario():
+            smoother = StreamSmoother(
+                chunks.append,
+                tick_interval=0.001,
+                catch_up_seconds=0.05,
+                min_chars_per_tick=1,
+            )
+            smoother.start()
+            smoother.feed("a" * 1000)
+            while smoother._remaining_units():
+                await asyncio.sleep(0.001)
+            first_burst = len(chunks)
+            smoother.feed("b" * 10)
+            await smoother.close()
+            return len(chunks) - first_burst
+
+        trickle_chunks = asyncio.run(scenario())
+        assert "".join(chunks) == "a" * 1000 + "b" * 10
+        assert trickle_chunks >= 5  # stale quota of 20 would lump it in 1
+
     def test_abort_discards_backlog(self):
         chunks: list[str] = []
 
