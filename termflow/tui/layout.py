@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Literal
 
 from termflow.ansi.codes import DIM_ON, RESET
-from termflow.ansi.utils import visible_length
+from termflow.ansi.utils import truncate_ansi, visible_length
 
 #: Below this many columns, split layouts collapse to a single pane.
 #: Chosen so a canonical 80-column terminal (79 after the one-column
@@ -44,23 +44,11 @@ def collapsed(width: int, threshold: int = COLLAPSE_BELOW) -> bool:
 
 def truncate(line: str, width: int) -> str:
     """Clip a styled line to ``width`` visible cells, resetting styles."""
+    if width <= 0:
+        return ""
     if visible_length(line) <= width:
         return line
-    from termflow.ansi.utils import ANSI_ESCAPE_RE
-
-    out: list[str] = []
-    used = 0
-    i = 0
-    while i < len(line) and used < width - 1:
-        m = ANSI_ESCAPE_RE.match(line, i)
-        if m:
-            out.append(m.group(0))
-            i = m.end()
-            continue
-        out.append(line[i])
-        used += visible_length(line[i])
-        i += 1
-    return "".join(out) + f"{RESET}\u2026"
+    return truncate_ansi(line, width) + RESET
 
 
 def two_columns(left: list[str], right: list[str], left_width: int, total_width: int) -> list[str]:
@@ -69,7 +57,11 @@ def two_columns(left: list[str], right: list[str], left_width: int, total_width:
     right_width = max(0, total_width - left_width - 3)
     merged: list[str] = []
     for i in range(max(len(left), len(right))):
-        lline = left[i] if i < len(left) else ""
+        # Both panes are clamped to their column budget. Without clamping
+        # the left pane, an overlong master line overruns ``left_width``,
+        # collapses the pad to zero, and bleeds straight through the
+        # divider into the detail pane.
+        lline = truncate(left[i], left_width) if i < len(left) else ""
         rline = truncate(right[i], right_width) if i < len(right) else ""
         pad = " " * max(0, left_width - visible_length(lline))
         merged.append(f"{lline}{pad}{divider}{rline}")

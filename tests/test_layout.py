@@ -5,6 +5,8 @@ from __future__ import annotations
 from io import StringIO
 from typing import ClassVar
 
+import pytest
+
 from termflow.ansi.utils import visible_length
 from termflow.tui import (
     COLLAPSE_BELOW,
@@ -14,8 +16,22 @@ from termflow.tui import (
     split_frame,
     two_columns,
 )
+from termflow.tui.layout import truncate
 
 DIVIDER = "\u2502"
+
+
+@pytest.mark.parametrize("width", [0, 1, 2, 3, 4, 10])
+@pytest.mark.parametrize("text", ["🐶" * 20, "界" * 20, "\x1b[31mabc🐶def" * 5])
+def test_truncate_respects_cell_budget(text, width):
+    assert visible_length(truncate(text, width)) <= width
+
+
+def test_wide_character_does_not_shift_pane_divider():
+    frame = two_columns(["abc🐶" * 20], ["detail"], 5, 20)
+    left, _, right = frame[0].partition(DIVIDER)
+    assert visible_length(left) == 6
+    assert "detail" in right
 
 
 class TestCollapsed:
@@ -56,6 +72,17 @@ class TestSplitFrame:
         assert len(merged) == 1
         assert visible_length(merged[0]) <= 30
         assert merged[0].startswith("l")
+
+    def test_two_columns_clamps_overlong_left_to_column_width(self):
+        # Regression: an overlong master line must not overrun the divider
+        # into the detail pane. Left column is 10 wide; 40 chars overflow.
+        merged = two_columns(["L" * 40], ["right"], 10, 30)
+        assert len(merged) == 1
+        left, _, right = merged[0].partition(DIVIDER)
+        assert visible_length(left) <= 11  # 10 + trailing space before divider
+        assert visible_length(merged[0]) <= 30
+        assert "right" in right
+        assert "…" in left  # truncation marker present
 
 
 class TestMenuPreviewCollapse:

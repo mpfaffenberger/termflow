@@ -5,7 +5,19 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.2] - 2026-09-11
+
+### Fixed
+
+- Preserve default-aligned Markdown table columns so subsequent center/right
+  alignment settings apply to the correct columns.
+- Keep wide characters within the terminal-cell budget when clipping pane text.
+
+- `two_columns` now clamps the **left** pane to its column budget, the
+  same way it already clamped the right. Previously an overlong master
+  line overran `left_width`, collapsed the padding to zero, and bled
+  through the divider into the detail pane — visible in split-pane
+  menus (e.g. `/prune`) whose rows aren't pre-truncated by the caller.
 
 ## [0.9.0] - 2026-08-24
 

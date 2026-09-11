@@ -597,7 +597,7 @@ class Parser:
         cells = content.split("|")
         for cell in cells:
             cell = cell.strip()
-            if not cell or cell == "-" * len(cell):
+            if not cell:
                 continue
             if cell.startswith(":") and cell.endswith(":"):
                 self.table_alignments.append("center")
