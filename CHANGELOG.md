@@ -5,6 +5,15 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-09-24
+
+### Changed
+
+- Support Python 3.10: `requires-python` lowered to `>=3.10`, CI now
+  tests 3.10 through 3.13.
+- Config loading uses `tomli` as the TOML parser on Python 3.10
+  (`tomllib` on 3.11+).
+
 ## [0.9.2] - 2026-09-11
 
 ### Fixed
