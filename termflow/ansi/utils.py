@@ -193,6 +193,78 @@ def parse_sgr_params(code: str) -> list[int]:
     return [int(p) for p in params_str.split(";") if p]
 
 
+# =============================================================================
+# SGR / Hyperlink State Tracking
+# =============================================================================
+
+#: SGR "off" attributes mapped to the "on" attributes they cancel.
+_SGR_CANCELS: dict[int, frozenset[int]] = {
+    22: frozenset({1, 2}),
+    23: frozenset({3}),
+    24: frozenset({4}),
+    25: frozenset({5, 6}),
+    27: frozenset({7}),
+    28: frozenset({8}),
+    29: frozenset({9}),
+    39: frozenset({*range(30, 39), *range(90, 98)}),
+    49: frozenset({*range(40, 49), *range(100, 108)}),
+}
+
+#: Closes an OSC 8 hyperlink (matches ``LINK[1]`` in :mod:`termflow.ansi.style`).
+OSC8_CLOSE = "\x1b]8;;\x1b\\"
+
+_OSC8_RE = re.compile(r"\x1b\]8;[^;]*;([^\x1b\x07]*)(?:\x1b\\|\x07)")
+
+
+def _sgr_attributes(params: list[int]) -> list[int]:
+    """Return the attribute selectors in ``params``, skipping color arguments.
+
+    ``38;2;255;0;0`` is *one* attribute (38) -- its RGB arguments must not
+    be mistaken for attributes like 0 (reset) or 22 (bold off).
+    """
+    attrs: list[int] = []
+    i = 0
+    while i < len(params):
+        attr = params[i]
+        attrs.append(attr)
+        if attr in (38, 48, 58):
+            mode = params[i + 1] if i + 1 < len(params) else None
+            i += 5 if mode == 2 else 3 if mode == 5 else 2
+        else:
+            i += 1
+    return attrs
+
+
+def _track_sgr(active: list[str], code: str) -> None:
+    """Update ``active`` (the SGR codes currently in effect) with ``code``.
+
+    Resets clear everything, "off" codes (22, 24, 39, ...) drop the codes
+    they cancel, and anything else is recorded. Non-SGR codes are ignored.
+    """
+    attrs = _sgr_attributes(parse_sgr_params(code))
+    if not attrs:
+        return
+    if 0 in attrs:
+        active.clear()
+    cancelled = frozenset().union(*(_SGR_CANCELS.get(a, frozenset()) for a in attrs))
+    if cancelled:
+        active[:] = [c for c in active if not cancelled & set(_sgr_attributes(parse_sgr_params(c)))]
+    if any(a != 0 and a not in _SGR_CANCELS for a in attrs):
+        active.append(code)
+
+
+def _osc8_opener(code: str) -> str | None:
+    """Classify an OSC 8 hyperlink code.
+
+    Returns the code itself if it opens a link, ``""`` if it closes one,
+    and ``None`` if it is not an OSC 8 code at all.
+    """
+    match = _OSC8_RE.fullmatch(code)
+    if match is None:
+        return None
+    return code if match.group(1) else ""
+
+
 def _get_active_codes(segments: list[str]) -> str:
     """Get the cumulative ANSI codes that are currently active.
 
@@ -205,41 +277,35 @@ def _get_active_codes(segments: list[str]) -> str:
         Combined ANSI codes that should be active at the end.
     """
     active_codes: list[str] = []
-
     for segment in segments:
-        if not is_ansi_code(segment):
-            continue
-
-        params = parse_sgr_params(segment)
-        if not params:
-            continue
-
-        # Check for reset
-        if 0 in params:
-            active_codes.clear()
-            # If there are other params after reset, keep processing
-            if params == [0]:
-                continue
-
-        # Track non-reset codes
-        active_codes.append(segment)
-
+        if is_ansi_code(segment):
+            _track_sgr(active_codes, segment)
     return "".join(active_codes)
 
 
-def wrap_ansi(text: str, width: int) -> list[str]:
+# =============================================================================
+# Wrapping / Truncation
+# =============================================================================
+
+
+def wrap_ansi(text: str, width: int, *, break_words: bool = False) -> list[str]:
     """Wrap text to width at word boundaries, preserving ANSI codes.
 
     Word boundaries (spaces/tabs) are preferred; a word only gets
-    character-split if it is, by itself, longer than ``width``.
+    character-split if it is, by itself, longer than ``width``. Whitespace
+    at a wrap point is dropped, so lines never end with a dangling space.
 
-    When a line is wrapped, any active ANSI SGR styles are:
-    1. Terminated at the end of each line with RESET
+    When a line is wrapped, any active ANSI SGR styles (and any open OSC 8
+    hyperlink) are:
+    1. Terminated at the end of each line
     2. Re-applied at the start of the next line
 
     Args:
         text: String potentially containing ANSI escape codes.
         width: Maximum visible width per line.
+        break_words: Split at exactly ``width`` cells instead of at word
+            boundaries, keeping every space (use for code, where
+            whitespace is significant).
 
     Returns:
         List of wrapped lines, each with proper ANSI code handling.
@@ -251,88 +317,92 @@ def wrap_ansi(text: str, width: int) -> list[str]:
     if width <= 0:
         return [text] if text else []
 
-    segments = split_ansi(text)
-
     lines: list[str] = []
-    current_line: list[str] = []
-    current_width = 0
-    active_codes: list[str] = []  # Currently active SGR codes
+    line: list[str] = []
+    line_width = 0
+    active: list[str] = []  # SGR codes in effect at the end of `line`
+    link = ""  # OSC 8 opener in effect at the end of `line`
 
-    # Buffered "word": visible chars (plus ANSI codes that appear inside it)
-    word_parts: list[str] = []
+    word: list[str] = []  # buffered word: visible chars + embedded codes
     word_width = 0
+    gap: list[str] = []  # whitespace between `line` and the buffered word
+
+    def place(part: str) -> None:
+        nonlocal line_width, link
+        line.append(part)
+        if is_ansi_code(part):
+            opener = _osc8_opener(part)
+            if opener is not None:
+                link = opener
+            else:
+                _track_sgr(active, part)
+        else:
+            line_width += visible_length(part)
 
     def end_line() -> None:
-        nonlocal current_line, current_width
-        if active_codes:
-            current_line.append(RESET)
-        lines.append("".join(current_line))
-        current_line = list(active_codes)
-        current_width = 0
+        nonlocal line, line_width
+        if link:
+            line.append(OSC8_CLOSE)
+        if active:
+            line.append(RESET)
+        lines.append("".join(line))
+        line = [*active, link] if link else list(active)
+        line_width = 0
+        gap.clear()
 
     def emit_word() -> None:
-        """Place the buffered word on the output, wrapping if needed."""
-        nonlocal current_line, current_width, word_parts, word_width
-        if not word_parts:
+        nonlocal word, word_width
+        if not word:
             return
-        if word_width == 0:
-            # Only ANSI codes buffered — append in place; no wrapping needed
-            current_line.extend(word_parts)
-            word_parts = []
-            return
-
-        if current_width + word_width <= width:
-            current_line.extend(word_parts)
-            current_width += word_width
-        elif word_width <= width and current_width > 0:
+        gap_width = len(gap)
+        if line_width + gap_width + word_width <= width:
+            for part in (*gap, *word):
+                place(part)
+        elif word_width <= width and line_width > 0:
             end_line()
-            current_line.extend(word_parts)
-            current_width = word_width
+            for part in word:
+                place(part)
         else:
-            # Word is wider than the line — fall back to character wrapping.
-            for part in word_parts:
+            # Word is wider than the line -- fall back to character wrapping.
+            if line_width > 0 and line_width + gap_width < width:
+                for part in gap:
+                    place(part)
+            for part in word:
                 if is_ansi_code(part):
-                    current_line.append(part)
+                    place(part)
                     continue
                 for ch in part:
-                    cw = max(0, wcwidth(ch))
-                    if current_width + cw > width and current_width > 0:
+                    if line_width + max(0, wcwidth(ch)) > width and line_width > 0:
                         end_line()
-                    current_line.append(ch)
-                    current_width += cw
-
-        word_parts = []
+                    place(ch)
+        gap.clear()
+        word = []
         word_width = 0
 
-    for segment in segments:
+    for segment in split_ansi(text):
         if is_ansi_code(segment):
-            params = parse_sgr_params(segment)
-            if params and 0 in params:
-                active_codes.clear()
-            elif params:
-                active_codes.append(segment)
-            # Attach code to the current word so styling travels with it
-            # across a wrap boundary.
-            word_parts.append(segment)
+            # Codes travel with the word so styling crosses a wrap boundary.
+            word.append(segment)
             continue
-
         for ch in segment:
             if ch == "\n":
                 emit_word()
                 end_line()
+            elif break_words:
+                word.append(ch)
+                word_width += max(0, wcwidth(ch))
+                emit_word()
             elif ch in (" ", "\t"):
                 emit_word()
-                # Preserve inter-word space if it fits; drop it at a wrap edge.
-                if current_width > 0 and current_width + 1 <= width:
-                    current_line.append(ch)
-                    current_width += 1
+                if line_width > 0:
+                    gap.append(ch)
             else:
-                word_parts.append(ch)
+                word.append(ch)
                 word_width += max(0, wcwidth(ch))
 
     emit_word()
-    if current_line:
-        lines.append("".join(current_line))
+    if line:
+        lines.append("".join(line))
 
     return lines if lines else [""]
 
@@ -361,18 +431,13 @@ def truncate_ansi(text: str, width: int, suffix: str = "…") -> str:
         return text
 
     target_width = width - suffix_width
-    segments = split_ansi(text)
     result: list[str] = []
     current_width = 0
     active_codes: list[str] = []
 
-    for segment in segments:
+    for segment in split_ansi(text):
         if is_ansi_code(segment):
-            params = parse_sgr_params(segment)
-            if params and 0 in params:
-                active_codes.clear()
-            elif params:
-                active_codes.append(segment)
+            _track_sgr(active_codes, segment)
             result.append(segment)
             continue
 

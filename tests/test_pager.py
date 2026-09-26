@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from io import StringIO
 
-from termflow.ansi.utils import visible_length
+from termflow.ansi.utils import visible, visible_length
 from termflow.tui import PagerBuilder
 from termflow.tui.pager import Pager, PagerResult
 
@@ -194,3 +194,93 @@ def test_builder_on_key_signature():
         .run()
     )
     assert result.key == "z"
+
+
+class TestReflow:
+    """Content given as reflow(width) re-renders whenever the width changes."""
+
+    DOC = "# Title\n\n" + " ".join(f"word{i}" for i in range(200))
+
+    def _resizing(self, sizes, keys):
+        """Key source that applies each queued size as a timeout tick first."""
+        pending = list(keys)
+
+        def key_source():
+            if sizes["queue"]:
+                sizes["wh"] = sizes["queue"].pop(0)
+                return ""  # timeout tick -> resize repaint
+            return pending.pop(0)
+
+        return key_source
+
+    def test_markdown_rewraps_on_resize(self):
+        sizes = {"wh": (80, 20), "queue": [(40, 20)]}
+        out = StringIO()
+        pager = (
+            PagerBuilder("Doc")
+            .markdown(self.DOC)
+            .key_source(self._resizing(sizes, ["q"]))
+            .output(out)
+            .size(lambda: sizes["wh"])
+            .alt_screen(False)
+            .build()
+        )
+        wide_count = pager.line_count
+        pager.run()
+        assert pager.line_count > wide_count  # narrower -> more lines
+        frames = out.getvalue().split("\x1b[H")[1:]
+        assert len(frames) == 2
+        body = frames[1].replace("\x1b[J", "").replace("\x1b[K", "")
+        for line in body.split("\r\n"):
+            assert visible_length(line) <= 39
+        # Words are never split: any fragment of "wordNN" would carry a
+        # digit without being a real document word ("d12", "12", ...).
+        doc_words = set(self.DOC.split())
+        numbered = [w for w in visible(body).split() if any(c.isdigit() for c in w)]
+        assert numbered and all(w in doc_words for w in numbered)
+
+    def test_reflow_only_reruns_when_width_changes(self):
+        calls = []
+
+        def reflow(width):
+            calls.append(width)
+            return [f"{width}"] * 5
+
+        sizes = {"wh": (60, 20), "queue": [(60, 10), (50, 10)]}
+        pager = Pager(
+            "t",
+            reflow=reflow,
+            key_source=self._resizing(sizes, ["j", "q"]),
+            output=StringIO(),
+            size=lambda: sizes["wh"],
+            use_alt_screen=False,
+        )
+        pager.run()
+        assert calls == [59, 49]  # height-only change didn't re-render
+
+    def test_resize_keeps_relative_position(self):
+        sizes = {"wh": (80, 14)}
+        pager = Pager(
+            "t",
+            reflow=lambda width: [f"line {i}" for i in range(100 if width > 50 else 200)],
+            key_source=lambda: "q",
+            output=StringIO(),
+            size=lambda: sizes["wh"],
+            use_alt_screen=False,
+        )
+        pager.scroll(50)
+        assert pager.top == 50
+        sizes["wh"] = (40, 14)
+        assert pager.line_count == 200
+        assert pager.top == 100  # same spot, half-way through
+
+    def test_markdown_respects_max_width(self):
+        pager = (
+            PagerBuilder("Doc")
+            .markdown(self.DOC, max_width=30)
+            .size(lambda: (120, 20))
+            .output(StringIO())
+            .build()
+        )
+        assert pager.line_count > 1
+        assert all(visible_length(ln) <= 30 for ln in pager._content())

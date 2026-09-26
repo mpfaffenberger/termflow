@@ -23,13 +23,21 @@ Example:
 """
 
 from termflow.render.code import (
+    CODE_CONTINUATION,
     CODEPAD_HORIZ,
     render_code_block,
     render_code_end,
     render_code_line,
     render_code_start,
+    wrap_code_line,
+)
+from termflow.render.document import (
+    render_markdown,
+    render_markdown_lines,
+    render_streaming,
 )
 from termflow.render.heading import render_heading, render_heading_simple
+from termflow.render.inline import format_inline
 from termflow.render.list import (
     BULLETS,
     get_bullet,
@@ -38,11 +46,7 @@ from termflow.render.list import (
     render_list_item,
     to_roman,
 )
-from termflow.render.renderer import (
-    Renderer,
-    render_markdown,
-    render_streaming,
-)
+from termflow.render.renderer import Renderer
 from termflow.render.style import RenderFeatures, RenderStyle
 from termflow.render.table import (
     TABLE_BOTTOM_LEFT,
@@ -77,6 +81,7 @@ __all__ = [
     "BULLETS",
     # Code
     "CODEPAD_HORIZ",
+    "CODE_CONTINUATION",
     # Table
     "TABLE_BOTTOM_LEFT",
     "TABLE_BOTTOM_RIGHT",
@@ -97,6 +102,7 @@ __all__ = [
     "TableRenderState",
     # Text
     "center",
+    "format_inline",
     "get_bullet",
     "get_ordered_bullet",
     "pad_left",
@@ -111,6 +117,7 @@ __all__ = [
     "render_list_continuation",
     "render_list_item",
     "render_markdown",
+    "render_markdown_lines",
     "render_streaming",
     "render_table_bottom",
     "render_table_complete",
@@ -121,4 +128,5 @@ __all__ = [
     "text_wrap",
     "to_roman",
     "truncate",
+    "wrap_code_line",
 ]

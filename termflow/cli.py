@@ -8,6 +8,7 @@ Examples:
     $ cat README.md | tf
     $ tf document.md
     $ tf --width 100 --style dracula document.md
+    $ tf --pager document.md
     $ echo '# Hello' | tf
 """
 
@@ -15,28 +16,19 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import os
+import io
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from termflow import __version__
 from termflow.config import Config
 from termflow.parser import Parser
 from termflow.render import Renderer, RenderStyle
 from termflow.syntax import Highlighter
-
-
-def get_terminal_width() -> int:
-    """Get terminal width with fallback.
-
-    Returns:
-        Terminal width in columns, or 80 if detection fails.
-    """
-    try:
-        return os.get_terminal_size().columns
-    except OSError:
-        return 80
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -52,6 +44,7 @@ def create_parser() -> argparse.ArgumentParser:
         "  cat README.md | tf\n"
         "  tf document.md\n"
         "  tf --width 100 document.md\n"
+        "  tf --pager README.md\n"
         "  tf --style dracula README.md\n"
         '  echo "# Hello" | tf',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -70,7 +63,14 @@ def create_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         metavar="N",
-        help="Terminal width (default: auto-detect)",
+        help="Fixed width (default: follow the terminal, including resizes)",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--pager",
+        action="store_true",
+        help="View in a scrollable pager that re-wraps on resize",
     )
 
     parser.add_argument(
@@ -152,7 +152,7 @@ def list_syntax_styles() -> None:
 def stream_render(
     input_stream: TextIO,
     output_stream: TextIO,
-    width: int,
+    width: int | None,
     style: RenderStyle,
     config: Config,
 ) -> None:
@@ -161,9 +161,9 @@ def stream_render(
     Args:
         input_stream: Input file-like object.
         output_stream: Output file-like object.
-        width: Terminal width.
+        width: Fixed width, or ``None`` to follow the live terminal width.
         style: Render style.
-        config: Configuration.
+        config: Configuration (``max_width`` caps the width).
     """
     parser = Parser()
     highlighter = Highlighter(style=config.syntax_style)
@@ -174,6 +174,7 @@ def stream_render(
         style=style,
         features=config.features,
         highlighter=highlighter,
+        max_width=config.max_width,
     )
 
     try:
@@ -197,10 +198,54 @@ def stream_render(
             sys.stdout.close()
 
 
+def page_render(
+    markdown: str,
+    title: str,
+    width: int | None,
+    style: RenderStyle,
+    config: Config,
+) -> None:
+    """Show markdown in a pager that re-wraps it whenever the terminal resizes.
+
+    Args:
+        markdown: The whole document.
+        title: Pager title (usually the file name).
+        width: Fixed wrap width cap, or ``None`` to follow the terminal.
+        style: Render style.
+        config: Configuration (``max_width`` caps the width).
+    """
+    from termflow.tui import PagerBuilder
+
+    caps = [cap for cap in (width, config.max_width) if cap]
+    (
+        PagerBuilder(title)
+        .style(style)
+        .markdown(
+            markdown,
+            features=config.features,
+            highlighter=Highlighter(style=config.syntax_style),
+            max_width=min(caps) if caps else None,
+        )
+        .run()
+    )
+
+
+def _reattach_tty() -> bool:
+    """Point stdin at the controlling terminal after draining a pipe.
+
+    This is what ``less`` does so ``cat file | less`` can still read keys.
+    """
+    try:
+        sys.stdin = Path("/dev/tty").open(encoding="utf-8")  # noqa: SIM115 - lives for the process
+    except OSError:
+        return False
+    return True
+
+
 def render_file(
     file_path: Path,
     output_stream: TextIO,
-    width: int,
+    width: int | None,
     style: RenderStyle,
     config: Config,
 ) -> int:
@@ -209,16 +254,25 @@ def render_file(
     Args:
         file_path: Path to markdown file.
         output_stream: Output file-like object.
-        width: Terminal width.
+        width: Fixed width, or ``None`` to follow the live terminal width.
         style: Render style.
         config: Configuration.
 
     Returns:
         Exit code (0 for success, 1 for error).
     """
+    return _with_file(file_path, lambda f: stream_render(f, output_stream, width, style, config))
+
+
+def _with_file(file_path: Path, action: Callable[[TextIO], None]) -> int:
+    """Open ``file_path`` as UTF-8 and run ``action`` on it, reporting errors.
+
+    Returns:
+        Exit code (0 for success, 1 for error).
+    """
     try:
         with file_path.open(encoding="utf-8") as f:
-            stream_render(f, output_stream, width, style, config)
+            action(f)
         return 0
     except FileNotFoundError:
         print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -287,23 +341,35 @@ def main(argv: list[str] | None = None) -> int:
     # Get style
     style = get_style(args.style, config)
 
-    # Determine width
-    width = args.width or config.width or get_terminal_width()
-    if config.max_width:
-        width = min(width, config.max_width)
+    # A fixed width, or None to follow the terminal (resizes included)
+    width = args.width or config.width
+    # Paging only makes sense on a terminal; otherwise behave like `cat`.
+    use_pager = args.pager and sys.stdout.isatty()
 
     # Render from file or stdin
     if args.file:
+        if use_pager:
+            return _with_file(
+                args.file, lambda f: page_render(f.read(), args.file.name, width, style, config)
+            )
         return render_file(args.file, sys.stdout, width, style, config)
-    else:
-        # Check if stdin is a TTY (no input piped)
-        if sys.stdin.isatty():
-            print("Usage: tf <file> or pipe markdown to tf", file=sys.stderr)
-            print("       tf --help for more options", file=sys.stderr)
-            return 1
 
-        stream_render(sys.stdin, sys.stdout, width, style, config)
+    # Check if stdin is a TTY (no input piped)
+    if sys.stdin.isatty():
+        print("Usage: tf <file> or pipe markdown to tf", file=sys.stderr)
+        print("       tf --help for more options", file=sys.stderr)
+        return 1
+
+    if use_pager:
+        markdown = sys.stdin.read()
+        if _reattach_tty():
+            page_render(markdown, "stdin", width, style, config)
+            return 0
+        stream_render(io.StringIO(markdown), sys.stdout, width, style, config)
         return 0
+
+    stream_render(sys.stdin, sys.stdout, width, style, config)
+    return 0
 
 
 if __name__ == "__main__":

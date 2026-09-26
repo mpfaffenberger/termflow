@@ -5,6 +5,57 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-26
+
+### Added
+
+- Word wrapping for paragraphs, headings (H1/H2 underlines span the widest
+  wrapped line), list items (hanging indent under the text), and `<think>`
+  blocks. Previously only tables and block quotes wrapped; everything else
+  was left to the terminal, which splits words mid-way.
+- Long code lines hard-wrap at the width with a `↪` continuation marker,
+  keeping syntax highlighting across the break (`wrap_code_line`,
+  `CODE_CONTINUATION`). The OSC 52 copy still contains the original lines.
+- Live width: a `Renderer` created without `width` re-checks the terminal
+  size for every block, so output after a resize fits. New `max_width`
+  argument; `set_width(None)` switches back to live width. Code blocks keep
+  the width they started with, so a resize can't break their borders.
+- `Pager(reflow=...)` / `PagerBuilder.reflow()` re-render content whenever
+  the width changes, keeping the reader's relative position.
+  `PagerBuilder.markdown()` builds on this to show markdown that re-wraps on
+  every resize.
+- `tf --pager` / `-p`: view a file or piped stdin in the reflowing pager
+  (falls back to plain output when stdout isn't a terminal).
+- `render_markdown_lines()`: render a document to display lines at a fixed
+  width with no side effects.
+- `wrap_ansi(..., break_words=True)` for exact-width splitting that keeps
+  whitespace (used for code).
+
+### Changed
+
+- The package version is now defined once, in `termflow/__init__.py`
+  (`termflow.__version__` had been stuck at 0.3.0).
+- The CLI follows the terminal width (and resizes) unless `--width` or
+  `width` in the config is set; `max_width` still caps it.
+- `RenderFeatures.wrap_text`, which existed but did nothing, now turns all
+  of the wrapping above on or off.
+- Block-quote width is now based on the actual margin width (2 columns per
+  level) instead of an assumed 3.
+- Internal: inline formatting moved to `termflow.render.inline`
+  (`format_inline`), and the whole-document helpers to
+  `termflow.render.document`. Both are re-exported from `termflow.render` as
+  before. OSC 52 generation is now `termflow.ansi.make_clipboard_copy`.
+
+### Fixed
+
+- `wrap_ansi` no longer leaves a trailing space at wrap points.
+- "Off" codes (`22`, `24`, `39`, …) now cancel the styles they end instead of
+  being re-applied on the next line.
+- Truecolor codes with a `0` component (e.g. pure red `38;2;255;0;0`) are no
+  longer mistaken for a reset, in `wrap_ansi` and `truncate_ansi`.
+- OSC 8 hyperlinks are closed at the end of a wrapped line and reopened on
+  the next, so the second half of a link stays clickable.
+
 ## [0.9.3] - 2026-09-24
 
 ### Changed

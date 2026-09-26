@@ -31,7 +31,7 @@ CLI usage:
     $ tf --style dracula README.md
 """
 
-__version__ = "0.3.0"
+__version__ = "0.10.0"
 
 from termflow.config import Config
 from termflow.diff import DiffRenderer, DiffStream, DiffTheme, render_diff

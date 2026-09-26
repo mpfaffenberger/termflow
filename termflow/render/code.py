@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from termflow.ansi import RESET, fg_color, visible_length
+from termflow.ansi import RESET, fg_color, visible_length, wrap_ansi
 
 if TYPE_CHECKING:
     from termflow.render.style import RenderStyle
@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 # =============================================================================
 
 CODEPAD_HORIZ = "─"
+
+#: Marks a code line that was wrapped because it overflowed the width.
+CODE_CONTINUATION = "↪ "
 
 
 def render_code_start(
@@ -109,6 +112,30 @@ def render_code_line(
         return f"{margin}{highlighted}{' ' * padding}"
 
 
+def wrap_code_line(highlighted: str, width: int, style: RenderStyle) -> list[str]:
+    """Hard-wrap an overflowing code line, marking continuations with ``↪``.
+
+    Code is split at exactly the available width (whitespace is
+    significant, so no word-boundary games), and syntax highlighting is
+    carried across the break. Lines that fit are returned untouched.
+
+    Args:
+        highlighted: Syntax-highlighted line with ANSI codes
+        width: Available width
+        style: Render style (for the continuation marker color)
+
+    Returns:
+        One or more display lines.
+    """
+    if visible_length(highlighted) <= width:
+        return [highlighted]
+    marker = f"{fg_color(style.grey)}{CODE_CONTINUATION}{RESET}"
+    chunks = wrap_ansi(
+        highlighted, max(1, width - visible_length(CODE_CONTINUATION)), break_words=True
+    )
+    return [chunks[0], *(f"{marker}{chunk}" for chunk in chunks[1:])]
+
+
 def render_code_end(
     width: int,
     margin: str,
@@ -172,7 +199,8 @@ def render_code_block(
     original_lines = code.splitlines()
     for i, highlighted in enumerate(highlighted_lines):
         original = original_lines[i] if i < len(original_lines) else ""
-        result.append(render_code_line(original, highlighted, width, margin, style, pretty_pad))
+        for chunk in wrap_code_line(highlighted, width, style):
+            result.append(render_code_line(original, chunk, width, margin, style, pretty_pad))
 
     # End
     result.extend(render_code_end(width, margin, style, pretty_pad))
