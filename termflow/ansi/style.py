@@ -6,6 +6,8 @@ These tuples make it easy to wrap text with styles:
 Each tuple is (on_code, off_code) for symmetric style application.
 """
 
+import base64
+
 # =============================================================================
 # Text Style Pairs: (on, off)
 # =============================================================================
@@ -49,3 +51,20 @@ def make_link(url: str, text: str) -> str:
         >>> # Renders as clickable "Click here" in supported terminals
     """
     return f"{LINK[0]}{url}\x1b\\{text}{LINK[1]}"
+
+
+def make_clipboard_copy(text: str) -> str:
+    """Create an OSC 52 sequence that copies ``text`` to the clipboard.
+
+    OSC 52 is supported by many modern terminals including iTerm2, Kitty,
+    Alacritty, WezTerm, foot, tmux (with ``set-clipboard on``) and some
+    versions of xterm.
+
+    Args:
+        text: The text to copy.
+
+    Returns:
+        The OSC 52 escape sequence (``ESC ] 52 ; c ; BASE64 BEL``).
+    """
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return f"\x1b]52;c;{encoded}\x07"

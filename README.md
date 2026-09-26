@@ -22,6 +22,11 @@ no Rich.
   language detection
 - **GitHub-flavored tables**, ordered/unordered/nested lists, block quotes,
   and `<think>` blocks for LLM chain-of-thought
+- **Word wrapping that follows the terminal** — prose wraps at word
+  boundaries (with hanging indents for lists), long code lines wrap with a
+  `↪` marker, and new output adapts when the terminal is resized
+- **Reflowing pager** (`tf --pager`) — a scrollable view that re-wraps the
+  whole document on every resize
 - **Smooth output pacing** (`termflow.stream`) — adaptive-rate buffering that
   turns bursty token streams into steady typewriter output
 - **Terminal theming** (`termflow.themes`) — bundled 16-color palettes applied
@@ -50,7 +55,8 @@ uvx --from termflow-md tf README.md
 ```bash
 tf README.md                  # render a file
 echo "# Hello" | tf           # render stdin
-tf -w 100 document.md         # fixed width
+tf -w 100 document.md         # fixed width (default: follow the terminal)
+tf -p README.md               # pager that re-wraps on resize (stdin works too)
 tf --style dracula README.md  # color preset
 tf --syntax-style nord doc.md # Pygments style for code blocks
 tf --list-syntax-styles       # available syntax styles
@@ -73,7 +79,7 @@ import sys
 from termflow import Parser, Renderer
 
 parser = Parser()
-renderer = Renderer(output=sys.stdout, width=80)
+renderer = Renderer(output=sys.stdout)  # no width: follows terminal resizes
 
 for line in markdown_stream:
     renderer.render_all(parser.parse_line(line))
@@ -190,6 +196,24 @@ if not result.cancelled:
 Multi-select returns `result.items`; `on_highlight` fires on every cursor
 move (useful for live theme previews); disabled items render dim and are
 skipped by navigation.
+
+## Resizing
+
+A `Renderer` without a fixed `width` re-checks the terminal width before
+every block, so output rendered *after* a resize fits the new size (`max_width`
+caps it on very wide terminals). Text already printed to scrollback can't be
+reflowed: once termflow emits a newline, the terminal owns that line. If you
+need the *whole* document to reflow, use the pager. It keeps the source and
+re-renders it at the new width on every resize, keeping your place:
+
+```python
+from termflow.tui import PagerBuilder
+
+PagerBuilder("README").markdown(open("README.md").read()).run()
+
+# Or reflow anything: reflow(width) -> lines is re-run when the width changes
+PagerBuilder("Log").reflow(lambda width: render_my_lines(width)).run()
+```
 
 ## Configuration
 
