@@ -38,6 +38,7 @@ from termflow.diff import DiffRenderer, DiffStream, DiffTheme, render_diff
 from termflow.parser import Parser
 from termflow.parser.events import ParseEvent
 from termflow.render import Renderer, RenderFeatures, RenderStyle, render_markdown
+from termflow.render.mermaid import RenderConfig as MermaidRenderConfig
 from termflow.syntax import Highlighter, highlight_code
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "DiffStream",
     "DiffTheme",
     "Highlighter",
+    "MermaidRenderConfig",
     # Events
     "ParseEvent",
     "Parser",

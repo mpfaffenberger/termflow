@@ -40,6 +40,8 @@ dependencies = [
     "pygments>=2.17.0",
     "wcwidth>=0.2.12",
     "tomli>=1.1.0; python_version < '3.11'",
+    "grandalf>=0.8",  # Graph layout engine for Mermaid diagrams
+    "Pillow>=10.0.0",  # Image rendering for Mermaid diagrams
 ]
 
 [project.optional-dependencies]

@@ -77,6 +77,8 @@ from termflow.render.code import (
 from termflow.render.heading import render_heading
 from termflow.render.inline import format_inline
 from termflow.render.list import get_bullet, render_list_item
+from termflow.render.mermaid import RenderConfig as MermaidRenderConfig
+from termflow.render.mermaid import render_mermaid_to_terminal
 from termflow.render.style import RenderFeatures, RenderStyle
 from termflow.render.table import (
     TableRenderState,
@@ -118,6 +120,7 @@ class Renderer:
         highlighter: Highlighter | None = None,
         dim: bool = False,
         max_width: int | None = None,
+        mermaid_render_config: MermaidRenderConfig | None = None,
     ) -> None:
         """Initialize the renderer.
 
@@ -130,6 +133,7 @@ class Renderer:
             highlighter: Syntax highlighter (created if not provided)
             dim: If True, render all output in dim/faded style (for thinking blocks)
             max_width: Cap on the rendering width (``None`` = uncapped)
+            mermaid_render_config: Configuration for mermaid diagram rendering
         """
         self.output = output or sys.stdout
         self._width = width or None
@@ -138,6 +142,7 @@ class Renderer:
         self.features = features or RenderFeatures()
         self.highlighter = highlighter or Highlighter()
         self._dim = dim
+        self.mermaid_render_config = mermaid_render_config
 
         # Table state
         self.table_state = TableRenderState()
@@ -161,6 +166,10 @@ class Renderer:
         self._table_header: tuple[str, ...] | None = None
         self._table_rows: list[tuple[str, ...]] = []
         self._table_alignments: list[str] = []
+
+        # Mermaid diagram rendering state
+        self._mermaid_mode: bool = False
+        self._mermaid_buffer: list[str] = []
 
     @staticmethod
     def _detect_width() -> int:
@@ -325,13 +334,14 @@ class Renderer:
                 self._nested_parser = Parser()
                 return  # Don't render code block chrome
 
+            # Check if this is a mermaid diagram
+            if lang_lower == "mermaid" and self.features.mermaid_graphics:
+                self._mermaid_mode = True
+                self._mermaid_buffer = []
+                return  # Don't render code block chrome yet
+
             self._markdown_passthrough = False
-            margin = self._margin()
-            self._code_width = self._current_width()
-            for line in render_code_start(
-                event.language, self._code_width, margin, self.style, self.features.pretty_pad
-            ):
-                self._writeln(line)
+            self._start_code_block(event.language)
 
         elif isinstance(event, CodeBlockLineEvent):
             # If in markdown passthrough mode, parse and render as markdown
@@ -341,26 +351,12 @@ class Renderer:
                     self.render(nested_event)
                 return
 
-            # Accumulate code for clipboard
-            if self._code_buffer:
-                self._code_buffer += "\n"
-            self._code_buffer += event.line
+            # If in mermaid mode, buffer the content
+            if self._mermaid_mode:
+                self._mermaid_buffer.append(event.line)
+                return
 
-            # Highlight and render
-            highlighted = self.highlighter.highlight_line(event.line, self._code_language or "text")
-            margin = self._margin()
-            width = self._code_width
-            chunks = (
-                wrap_code_line(highlighted, width, self.style)
-                if self.features.wrap_text
-                else [highlighted]
-            )
-            for chunk in chunks:
-                self._writeln(
-                    render_code_line(
-                        event.line, chunk, width, margin, self.style, self.features.pretty_pad
-                    )
-                )
+            self._render_code_line(event.line)
 
         elif isinstance(event, CodeBlockEndEvent):
             # If in markdown passthrough mode, finalize the nested parser
@@ -374,18 +370,11 @@ class Renderer:
                 self._code_buffer = ""
                 return
 
-            margin = self._margin()
-            for line in render_code_end(
-                self._code_width, margin, self.style, self.features.pretty_pad
-            ):
-                self._writeln(line)
+            if self._mermaid_mode:
+                self._finish_mermaid_block()
+                return
 
-            # Clipboard integration (OSC 52)
-            if self.features.clipboard and self._code_buffer:
-                self._write(make_clipboard_copy(self._code_buffer))
-
-            self._code_language = None
-            self._code_buffer = ""
+            self._end_code_block()
 
         # === List Events ===
         elif isinstance(event, ListItemStartEvent):
@@ -535,6 +524,77 @@ class Renderer:
         elif isinstance(event, ParagraphEndEvent):
             self._in_paragraph = False
 
+    def _start_code_block(self, label: str | None) -> None:
+        """Pin the block width and emit the code block header."""
+        margin = self._margin()
+        self._code_width = self._current_width()
+        for line in render_code_start(
+            label, self._code_width, margin, self.style, self.features.pretty_pad
+        ):
+            self._writeln(line)
+
+    def _render_code_line(self, line: str) -> None:
+        """Highlight, wrap, and emit one code line, buffering it for the clipboard."""
+        if self._code_buffer:
+            self._code_buffer += "\n"
+        self._code_buffer += line
+
+        highlighted = self.highlighter.highlight_line(line, self._code_language or "text")
+        margin = self._margin()
+        width = self._code_width
+        chunks = (
+            wrap_code_line(highlighted, width, self.style)
+            if self.features.wrap_text
+            else [highlighted]
+        )
+        for chunk in chunks:
+            self._writeln(
+                render_code_line(line, chunk, width, margin, self.style, self.features.pretty_pad)
+            )
+
+    def _end_code_block(self) -> None:
+        """Emit the code block footer, copy to clipboard, and clear block state."""
+        margin = self._margin()
+        for line in render_code_end(self._code_width, margin, self.style, self.features.pretty_pad):
+            self._writeln(line)
+
+        # Clipboard integration (OSC 52)
+        if self.features.clipboard and self._code_buffer:
+            self._write(make_clipboard_copy(self._code_buffer))
+
+        self._code_language = None
+        self._code_buffer = ""
+
+    def _finish_mermaid_block(self) -> None:
+        """Render the buffered mermaid diagram, falling back to a code block on failure."""
+        self._mermaid_mode = False
+        code = "\n".join(self._mermaid_buffer)
+        self._mermaid_buffer = []
+
+        try:
+            output = render_mermaid_to_terminal(
+                code,
+                width=self._current_width(),
+                render_config=self.mermaid_render_config,
+            )
+        except Exception:
+            # Any failure (parse, layout, imaging) degrades to showing the source.
+            self._render_mermaid_fallback(code)
+            return
+
+        self._write(output)
+        self._writeln()  # Ensure newline after diagram
+        self._code_language = None
+        self._code_buffer = ""
+
+    def _render_mermaid_fallback(self, code: str) -> None:
+        """Render mermaid source as a plain code block (mermaid isn't in Pygments)."""
+        self._code_language = "text"
+        self._start_code_block("mermaid 📊")
+        for line in code.splitlines():
+            self._render_code_line(line)
+        self._end_code_block()
+
     def render_all(self, events: list[ParseEvent]) -> None:
         """Render multiple events.
 
@@ -595,3 +655,5 @@ class Renderer:
         self._list_ordered = False
         self._list_checked = None
         self._in_paragraph = False
+        self._mermaid_mode = False
+        self._mermaid_buffer = []

@@ -11,8 +11,8 @@ a natural fit for LLM output. It also ships the surrounding machinery a
 terminal-native application needs: smooth typewriter-style output pacing,
 terminal-wide color theming, and dependency-free interactive menus.
 
-Two runtime dependencies: Pygments and wcwidth. No curses, no prompt_toolkit,
-no Rich.
+Runtime dependencies: Pygments and wcwidth, plus grandalf and Pillow for
+Mermaid diagrams. No curses, no prompt_toolkit, no Rich.
 
 ## Features
 
@@ -34,6 +34,8 @@ no Rich.
 - **Interactive menus** (`termflow.tui`) — a declarative menu builder with
   search, pagination, multi-select, and live preview panes, built on plain
   ANSI escape codes
+- **Mermaid flowcharts** rendered as terminal graphics (Kitty, iTerm2,
+  WezTerm) or Unicode block art, with a code-block fallback
 - **OSC 8 hyperlinks** and **OSC 52 clipboard** integration where the
   terminal supports them
 - **Configurable** via TOML config file or programmatic API
@@ -60,6 +62,7 @@ tf -p README.md               # pager that re-wraps on resize (stdin works too)
 tf --style dracula README.md  # color preset
 tf --syntax-style nord doc.md # Pygments style for code blocks
 tf --list-syntax-styles       # available syntax styles
+tf --no-mermaid-graphics doc.md  # show mermaid blocks as code
 ```
 
 Run `tf --help` for the full option list.
@@ -214,6 +217,28 @@ PagerBuilder("README").markdown(open("README.md").read()).run()
 # Or reflow anything: reflow(width) -> lines is re-run when the width changes
 PagerBuilder("Log").reflow(lambda width: render_my_lines(width)).run()
 ```
+
+## Mermaid diagrams
+
+Fenced ` ```mermaid ` blocks containing flowcharts are rendered as diagrams
+instead of source code:
+
+```mermaid
+graph LR
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Process]
+    B -->|No| D((End))
+    C --> D
+```
+
+- **Directions**: LR, RL, TB, TD, BT
+- **Node shapes**: rectangle `[]`, rounded `()`, diamond `{}`, circle `(())`, flag `>`
+- **Edge styles**: solid `-->`, dotted `-.->`, thick `==>`, with `-->|label|` labels
+
+Kitty, iTerm2, and WezTerm get native inline graphics; other terminals get
+Unicode block art. Anything that fails to parse falls back to a styled code
+block. Disable diagram rendering with `tf --no-mermaid-graphics` or
+`mermaid_graphics = false` under `[features]` in the config file.
 
 ## Configuration
 
