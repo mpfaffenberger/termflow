@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from termflow.ansi import RESET, fg_color
+from termflow.ansi import RESET, fg_color, visible_length
+from termflow.render.text import text_wrap
 
 if TYPE_CHECKING:
     from termflow.render.style import RenderStyle
@@ -107,7 +108,7 @@ def render_list_item(
     depth: int,
     bullet_char: str,
     content: str,
-    _width: int,  # Reserved for future text wrapping
+    width: int,
     margin: str,
     style: RenderStyle,
     is_ordered: bool = False,
@@ -155,16 +156,16 @@ def render_list_item(
         bullet = get_bullet(depth) if bullet_char == "•" else bullet_char
         formatted_bullet = f"{fg}{bullet}{RESET}"
 
-    # Combine
-    line = f"{margin}{indent}{formatted_bullet} {content}"
-
-    return [line]
+    # Wrap with a hanging indent so continuation lines align with the text.
+    lead = f"{indent}{formatted_bullet} "
+    hang = " " * visible_length(lead)
+    return [f"{margin}{line}" for line in text_wrap(content, width, 0, lead, hang)]
 
 
 def render_list_continuation(
     depth: int,
     content: str,
-    _width: int,  # Reserved for future text wrapping
+    width: int,
     margin: str,
     _style: RenderStyle,  # Reserved for future styling
 ) -> list[str]:
@@ -183,4 +184,4 @@ def render_list_continuation(
     # Indent to align with content after bullet
     indent = "  " * depth + "    "  # Extra 4 for bullet + space alignment
 
-    return [f"{margin}{indent}{content}"]
+    return [f"{margin}{line}" for line in text_wrap(content, width, 0, indent, indent)]

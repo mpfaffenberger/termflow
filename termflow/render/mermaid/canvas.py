@@ -19,18 +19,16 @@ Example:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw, ImageFont
 
-from termflow.render.mermaid.layout import GraphLayout, PositionedEdge, PositionedNode
-from termflow.render.mermaid.parser import Direction, EdgeStyle, NodeShape
+from termflow.render.mermaid.parser import EdgeStyle, NodeShape
 
 if TYPE_CHECKING:
-    pass
-
+    from termflow.render.mermaid.layout import GraphLayout, PositionedEdge, PositionedNode
 
 # =============================================================================
 # Type Aliases
@@ -119,7 +117,7 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         if Path(font_path).exists():
             try:
                 return ImageFont.truetype(font_path, size)
-            except (OSError, IOError):
+            except OSError:
                 continue
 
     # Fallback to default bitmap font

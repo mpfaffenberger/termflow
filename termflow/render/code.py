@@ -1,17 +1,20 @@
-"""Code block rendering with box drawing borders.
+"""Code block rendering with simple horizontal separators.
 
 Renders code blocks with:
-- Unicode box drawing borders
+- Simple horizontal line separators (top/bottom)
 - Language label in the top border
 - Background coloring
 - Syntax highlighting integration
+
+Note: Box corners and side borders are intentionally omitted to make copying
+code easier - users can select code without grabbing any border characters.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from termflow.ansi import RESET, fg_color, visible_length
+from termflow.ansi import RESET, fg_color, visible_length, wrap_ansi
 
 if TYPE_CHECKING:
     from termflow.render.style import RenderStyle
@@ -20,12 +23,10 @@ if TYPE_CHECKING:
 # Box Drawing Characters
 # =============================================================================
 
-CODEPAD_TOP_LEFT = "╭"
-CODEPAD_TOP_RIGHT = "╮"
-CODEPAD_BOTTOM_LEFT = "╰"
-CODEPAD_BOTTOM_RIGHT = "╯"
 CODEPAD_HORIZ = "─"
-CODEPAD_VERT = "│"
+
+#: Marks a code line that was wrapped because it overflowed the width.
+CODE_CONTINUATION = "↪ "
 
 
 def render_code_start(
@@ -60,19 +61,16 @@ def render_code_start(
 
     # Calculate border lengths
     label_len = len(lang_label)
-    inner_width = width - 2  # -2 for corners
+    inner_width = width  # full width, no corners
 
     if label_len > 0:
-        # Put label on the right side
-        left_border_len = inner_width - label_len
-        left_border = CODEPAD_HORIZ * max(0, left_border_len)
-        top_line = (
-            f"{margin}{fg}{CODEPAD_TOP_LEFT}{left_border}"
-            f"{grey}{lang_label}{fg}{CODEPAD_TOP_RIGHT}{RESET}"
-        )
+        # Put label on the left side
+        right_border_len = inner_width - label_len
+        right_border = CODEPAD_HORIZ * max(0, right_border_len)
+        top_line = f"{margin}{grey}{lang_label}{fg}{right_border}{RESET}"
     else:
         border = CODEPAD_HORIZ * inner_width
-        top_line = f"{margin}{fg}{CODEPAD_TOP_LEFT}{border}{CODEPAD_TOP_RIGHT}{RESET}"
+        top_line = f"{margin}{fg}{border}{RESET}"
 
     lines.append(top_line)
     return lines
@@ -99,23 +97,43 @@ def render_code_line(
     Returns:
         Formatted code line.
     """
-    fg = fg_color(style.symbol)
+    fg_color(style.symbol)
 
     # Calculate visible length and padding
     vis_len = visible_length(highlighted)
 
     if pretty_pad:
-        # Account for borders (2 chars) and spacing
-        content_width = width - 4  # borders + spaces
+        # No side borders for clean copy-paste! Just the code.
+        content_width = width
         padding = max(0, content_width - vis_len)
-        return (
-            f"{margin}{fg}{CODEPAD_VERT}{RESET}"
-            f" {highlighted}{' ' * padding} "
-            f"{fg}{CODEPAD_VERT}{RESET}"
-        )
+        return f"{margin}{highlighted}{' ' * padding}"
     else:
         padding = max(0, width - vis_len)
         return f"{margin}{highlighted}{' ' * padding}"
+
+
+def wrap_code_line(highlighted: str, width: int, style: RenderStyle) -> list[str]:
+    """Hard-wrap an overflowing code line, marking continuations with ``↪``.
+
+    Code is split at exactly the available width (whitespace is
+    significant, so no word-boundary games), and syntax highlighting is
+    carried across the break. Lines that fit are returned untouched.
+
+    Args:
+        highlighted: Syntax-highlighted line with ANSI codes
+        width: Available width
+        style: Render style (for the continuation marker color)
+
+    Returns:
+        One or more display lines.
+    """
+    if visible_length(highlighted) <= width:
+        return [highlighted]
+    marker = f"{fg_color(style.grey)}{CODE_CONTINUATION}{RESET}"
+    chunks = wrap_ansi(
+        highlighted, max(1, width - visible_length(CODE_CONTINUATION)), break_words=True
+    )
+    return [chunks[0], *(f"{marker}{chunk}" for chunk in chunks[1:])]
 
 
 def render_code_end(
@@ -141,10 +159,9 @@ def render_code_end(
         return lines
 
     fg = fg_color(style.symbol)
-    inner_width = width - 2
-    border = CODEPAD_HORIZ * inner_width
+    border = CODEPAD_HORIZ * width
 
-    lines.append(f"{margin}{fg}{CODEPAD_BOTTOM_LEFT}{border}{CODEPAD_BOTTOM_RIGHT}{RESET}")
+    lines.append(f"{margin}{fg}{border}{RESET}")
     return lines
 
 
@@ -182,7 +199,8 @@ def render_code_block(
     original_lines = code.splitlines()
     for i, highlighted in enumerate(highlighted_lines):
         original = original_lines[i] if i < len(original_lines) else ""
-        result.append(render_code_line(original, highlighted, width, margin, style, pretty_pad))
+        for chunk in wrap_code_line(highlighted, width, style):
+            result.append(render_code_line(original, chunk, width, margin, style, pretty_pad))
 
     # End
     result.extend(render_code_end(width, margin, style, pretty_pad))

@@ -6,12 +6,11 @@ Comprehensive tests covering:
 - Graphics protocol detection
 """
 
-import pytest
 from PIL import Image
 
 from termflow.render.mermaid import (
-    GraphLayout,
     GraphicsProtocol,
+    GraphLayout,
     RenderConfig,
     detect_graphics_protocol,
     image_to_blocks,
@@ -23,7 +22,6 @@ from termflow.render.mermaid import (
     render_to_bytes,
     render_to_image,
 )
-
 
 # =============================================================================
 # Canvas Tests

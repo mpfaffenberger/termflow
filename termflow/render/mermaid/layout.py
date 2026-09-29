@@ -19,7 +19,6 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from grandalf.graphs import Edge as GEdge
 from grandalf.graphs import Graph as GGraph
@@ -32,10 +31,6 @@ from termflow.render.mermaid.parser import (
     MermaidGraph,
     NodeShape,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # =============================================================================
 # Configuration
@@ -194,7 +189,6 @@ def _transform_coordinates(
     x: float,
     y: float,
     direction: Direction,
-    max_x: float,
     max_y: float,
 ) -> tuple[float, float]:
     """Transform coordinates based on flow direction.
@@ -206,7 +200,6 @@ def _transform_coordinates(
         x: Original X coordinate
         y: Original Y coordinate
         direction: Desired flow direction
-        max_x: Maximum X in original coordinates
         max_y: Maximum Y in original coordinates
 
     Returns:
@@ -369,12 +362,10 @@ def layout_graph(
         component_offset_x += comp_width + NODE_H_SPACING * 2
 
     # Now compute final bounds for coordinate transformation
-    all_max_x = 0.0
     all_max_y = 0.0
     for v in vertices.values():
         if v.view:
-            vx, vy = v.view.xy
-            all_max_x = max(all_max_x, vx + v.view.w / 2)
+            _, vy = v.view.xy
             all_max_y = max(all_max_y, vy + v.view.h / 2)
 
     # Transform and create positioned nodes
@@ -385,9 +376,7 @@ def layout_graph(
             width, height = v.view.w, v.view.h
 
             # Transform coordinates based on direction
-            tx, ty = _transform_coordinates(
-                x, y, graph.direction, all_max_x, all_max_y
-            )
+            tx, ty = _transform_coordinates(x, y, graph.direction, all_max_y)
 
             # For LR/RL, swap width and height perception for bounds
             # but keep actual node dimensions
@@ -441,15 +430,15 @@ def layout_graph(
         max_y = max(n.y + n.height / 2 for n in result.nodes.values())
 
         # Shift everything so min is at 0
-        for node in result.nodes.values():
-            node.x -= min_x
-            node.y -= min_y
+        for positioned_node in result.nodes.values():
+            positioned_node.x -= min_x
+            positioned_node.y -= min_y
 
-        for edge in result.edges:
-            edge.src_x -= min_x
-            edge.src_y -= min_y
-            edge.dst_x -= min_x
-            edge.dst_y -= min_y
+        for positioned_edge in result.edges:
+            positioned_edge.src_x -= min_x
+            positioned_edge.src_y -= min_y
+            positioned_edge.dst_x -= min_x
+            positioned_edge.dst_y -= min_y
 
         result.width = max_x - min_x
         result.height = max_y - min_y

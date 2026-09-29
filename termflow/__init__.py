@@ -31,9 +31,10 @@ CLI usage:
     $ tf --style dracula README.md
 """
 
-__version__ = "0.1.0"
+__version__ = "0.10.0"
 
 from termflow.config import Config
+from termflow.diff import DiffRenderer, DiffStream, DiffTheme, render_diff
 from termflow.parser import Parser
 from termflow.parser.events import ParseEvent
 from termflow.render import Renderer, RenderFeatures, RenderStyle, render_markdown
@@ -43,12 +44,16 @@ from termflow.syntax import Highlighter, highlight_code
 __all__ = [
     # Core classes
     "Config",
+    # Diff rendering
+    "DiffRenderer",
+    "DiffStream",
+    "DiffTheme",
     "Highlighter",
+    "MermaidRenderConfig",
     # Events
     "ParseEvent",
     "Parser",
     # Style
-    "MermaidRenderConfig",
     "RenderFeatures",
     "RenderStyle",
     "Renderer",
@@ -56,5 +61,6 @@ __all__ = [
     "__version__",
     # Convenience functions
     "highlight_code",
+    "render_diff",
     "render_markdown",
 ]

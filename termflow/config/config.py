@@ -14,14 +14,17 @@ Search order for config files:
 from __future__ import annotations
 
 import os
-
-# Python 3.11+ has tomllib built-in
-import tomllib  # type: ignore[assignment]
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from termflow.render.style import RenderFeatures, RenderStyle
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover - exercised only on Python 3.10
+    import tomli as tomllib
 
 
 @dataclass
@@ -113,10 +116,6 @@ class Config:
         Returns:
             Loaded configuration, or default if loading fails.
         """
-        if tomllib is None:
-            # No TOML parser available
-            return cls()
-
         try:
             with path.open("rb") as f:
                 data = tomllib.load(f)
@@ -168,6 +167,9 @@ class Config:
                 hyperlinks=features_data.get("hyperlinks", config.features.hyperlinks),
                 images=features_data.get("images", config.features.images),
                 wrap_text=features_data.get("wrap_text", config.features.wrap_text),
+                mermaid_graphics=features_data.get(
+                    "mermaid_graphics", config.features.mermaid_graphics
+                ),
             )
 
         return config
@@ -200,6 +202,7 @@ class Config:
                 "hyperlinks": self.features.hyperlinks,
                 "images": self.features.images,
                 "wrap_text": self.features.wrap_text,
+                "mermaid_graphics": self.features.mermaid_graphics,
             },
         }
 

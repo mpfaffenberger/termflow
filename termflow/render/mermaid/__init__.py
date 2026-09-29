@@ -62,25 +62,19 @@ from termflow.render.mermaid.parser import (
 )
 
 __all__ = [
-    # Enums
     "Direction",
-    "EdgeStyle",
-    "GraphicsProtocol",
-    "NodeShape",
-    # Parser data classes
     "Edge",
-    "MermaidGraph",
-    "Node",
-    # Layout data classes
+    "EdgeStyle",
     "GraphLayout",
+    "GraphicsProtocol",
+    "MermaidGraph",
+    "MermaidParseError",
+    "MermaidParser",
+    "Node",
+    "NodeShape",
     "PositionedEdge",
     "PositionedNode",
-    # Render config
     "RenderConfig",
-    # Parser
-    "MermaidParser",
-    "MermaidParseError",
-    # Functions
     "detect_graphics_protocol",
     "image_to_blocks",
     "image_to_iterm2",

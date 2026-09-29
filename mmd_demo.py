@@ -159,8 +159,8 @@ def get_demo_mermaid_config():
 
         DEMO_MERMAID_CONFIG = RenderConfig(
             size_multiplier=1.2,  # Just 20% bigger than default
-            stroke_width=4,       # Default thickness
-            font_size=24,         # Readable but not overwhelming
+            stroke_width=4,  # Default thickness
+            font_size=24,  # Readable but not overwhelming
         )
     return DEMO_MERMAID_CONFIG
 

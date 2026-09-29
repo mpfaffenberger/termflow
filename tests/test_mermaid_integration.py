@@ -48,9 +48,7 @@ class TestMermaidPipeline:
         """Full pipeline with explicit protocol."""
         code = "graph LR\n    A --> B"
 
-        block_output = render_mermaid_to_terminal(
-            code, width=60, protocol=GraphicsProtocol.BLOCK
-        )
+        block_output = render_mermaid_to_terminal(code, width=60, protocol=GraphicsProtocol.BLOCK)
         assert isinstance(block_output, str)
         # Block output should contain block characters or ANSI codes
         assert "\x1b[" in block_output or "█" in block_output
@@ -71,12 +69,10 @@ class TestMermaidErrorHandling:
 
     def test_parse_mermaid_error_has_line_number(self):
         """MermaidParseError includes line number when available."""
-        try:
+        with pytest.raises(MermaidParseError) as exc_info:
             parse_mermaid("graph LR\n    123invalid --> B")
-            assert False, "Should have raised MermaidParseError"
-        except MermaidParseError as e:
-            assert e.line_number is not None
-            assert "Line" in str(e)
+        assert exc_info.value.line_number is not None
+        assert "Line" in str(exc_info.value)
 
 
 class TestMermaidRendererIntegration:

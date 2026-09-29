@@ -25,8 +25,7 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 if TYPE_CHECKING:
-    pass
-
+    from termflow.render.mermaid.canvas import RenderConfig
 
 # =============================================================================
 # Constants
@@ -282,11 +281,8 @@ def image_to_blocks(
     orig_width, orig_height = img.size
 
     # Calculate target dimensions
-    if width is None:
-        # Default: 1 character = 2 pixels width
-        target_width = orig_width // 2
-    else:
-        target_width = width
+    # Default: 1 character = 2 pixels width
+    target_width = orig_width // 2 if width is None else width
 
     # Ensure minimum size
     target_width = max(target_width, 10)
@@ -314,8 +310,11 @@ def image_to_blocks(
 
     img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-    # Get pixel data
-    pixels = img.load()
+    def pixel(x: int, y: int) -> tuple[int, int, int]:
+        value = img.getpixel((x, y))
+        if not isinstance(value, tuple):  # RGB mode always yields a 3-tuple
+            raise TypeError(f"expected an RGB pixel, got {value!r}")
+        return value[0], value[1], value[2]
 
     # Build output
     lines = []
@@ -327,8 +326,8 @@ def image_to_blocks(
 
         for x in range(new_width):
             # Get top and bottom pixel colors
-            top_color = pixels[x, y]
-            bottom_color = pixels[x, y + 1] if y + 1 < new_height else top_color
+            top_color = pixel(x, y)
+            bottom_color = pixel(x, y + 1) if y + 1 < new_height else top_color
 
             # Determine which character and colors to use
             if _colors_similar(top_color, bottom_color):
@@ -404,7 +403,7 @@ def render_mermaid_to_terminal(
     mermaid_code: str,
     width: int | None = None,
     protocol: GraphicsProtocol | None = None,
-    render_config: "RenderConfig | None" = None,
+    render_config: RenderConfig | None = None,
 ) -> str:
     """Convenience function to render Mermaid code directly to terminal.
 
@@ -422,7 +421,7 @@ def render_mermaid_to_terminal(
     Raises:
         MermaidParseError: If parsing fails
     """
-    from termflow.render.mermaid.canvas import RenderConfig, render_to_image
+    from termflow.render.mermaid.canvas import render_to_image
     from termflow.render.mermaid.layout import layout_graph
     from termflow.render.mermaid.parser import parse_mermaid
 

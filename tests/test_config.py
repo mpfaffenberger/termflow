@@ -61,6 +61,7 @@ bright = "#ff0000"
 
 [features]
 clipboard = false
+mermaid_graphics = false
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(toml_content)
@@ -72,6 +73,7 @@ clipboard = false
                 assert config.syntax_style == "dracula"
                 assert config.style.bright == "#ff0000"
                 assert config.features.clipboard is False
+                assert config.features.mermaid_graphics is False
             finally:
                 Path(f.name).unlink()
 

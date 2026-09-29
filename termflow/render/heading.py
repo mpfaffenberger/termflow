@@ -7,6 +7,9 @@ Each heading level has a distinct visual style:
 - H4: Bold, default color
 - H5: Normal text
 - H6: Dim grey
+
+Long headings word-wrap to the available width; H1/H2 underlines span
+the widest wrapped line.
 """
 
 from __future__ import annotations
@@ -14,9 +17,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from termflow.ansi import BOLD_OFF, BOLD_ON, RESET, fg_color, visible_length
+from termflow.render.text import text_wrap
 
 if TYPE_CHECKING:
     from termflow.render.style import RenderStyle
+
+#: Marker shown before H5 headings.
+H5_MARKER = "▸"
+
+
+def _heading_codes(level: int, style: RenderStyle) -> tuple[str, str]:
+    """Return the (open, close) ANSI codes that style a heading's text."""
+    if level <= 2:
+        return f"{BOLD_ON}{fg_color(style.bright)}", RESET
+    if level == 3:
+        return f"{BOLD_ON}{fg_color(style.head)}", RESET
+    if level == 4:
+        return BOLD_ON, BOLD_OFF
+    if level == 5:
+        return "", ""
+    return fg_color(style.grey), RESET
 
 
 def render_heading(
@@ -26,64 +46,39 @@ def render_heading(
     margin: str,
     style: RenderStyle,
 ) -> list[str]:
-    """Render a heading (H1-H6).
+    """Render a heading (H1-H6), word-wrapped to ``width``.
 
     Args:
         level: Heading level (1-6)
         content: Heading text content
-        width: Available width for rendering
+        width: Available width for rendering (excluding ``margin``)
         margin: Left margin string (for blockquotes, etc.)
         style: Render style configuration
 
     Returns:
-        List of rendered lines (usually just one).
+        List of rendered lines: the (possibly wrapped) heading text, plus
+        an underline for H1/H2.
 
     Example:
         >>> lines = render_heading(1, "Hello World", 80, "", style)
-        >>> print(lines[0])  # Centered, bold, colored
+        >>> print(lines[0])  # Bold, colored
     """
-    lines: list[str] = []
-
-    if level == 1:
-        # H1: Bold, left-justified, bright color, with decorative underline
-        fg = fg_color(style.bright)
-        text = f"{BOLD_ON}{fg}{content}{RESET}"
-
-        # Left-justify the heading
-        lines.append(f"{margin}{text}")
-
-        # Add decorative underline
-        underline_char = "═"
-        underline = underline_char * min(visible_length(content) + 4, width)
-        lines.append(f"{margin}{fg}{underline}{RESET}")
-
-    elif level == 2:
-        # H2: Bold, bright color, with subtle underline
-        fg = fg_color(style.bright)
-        lines.append(f"{margin}{BOLD_ON}{fg}{content}{RESET}")
-
-        # Subtle underline
-        underline = "─" * min(visible_length(content), width)
-        lines.append(f"{margin}{fg}{underline}{RESET}")
-
-    elif level == 3:
-        # H3: Bold, head color
-        fg = fg_color(style.head)
-        lines.append(f"{margin}{BOLD_ON}{fg}{content}{RESET}")
-
-    elif level == 4:
-        # H4: Just bold
-        lines.append(f"{margin}{BOLD_ON}{content}{BOLD_OFF}")
-
-    elif level == 5:
-        # H5: Normal text, slightly emphasized with symbol color
-        fg = fg_color(style.symbol)
-        lines.append(f"{margin}{fg}▸{RESET} {content}")
-
+    open_code, close_code = _heading_codes(level, style)
+    if level == 5:
+        first_prefix = f"{fg_color(style.symbol)}{H5_MARKER}{RESET} "
+        cont_prefix = " " * (visible_length(H5_MARKER) + 1)
     else:
-        # H6: Dim grey
-        fg = fg_color(style.grey)
-        lines.append(f"{margin}{fg}{content}{RESET}")
+        first_prefix = cont_prefix = ""
+
+    text_lines = text_wrap(f"{open_code}{content}{close_code}", width, 0, first_prefix, cont_prefix)
+    lines = [f"{margin}{line}" for line in text_lines]
+
+    if level <= 2:
+        fg = fg_color(style.bright)
+        text_width = max((visible_length(line) for line in text_lines), default=0)
+        # H1 gets a wider decorative double rule, H2 a subtle single one.
+        char, extra = ("═", 4) if level == 1 else ("─", 0)
+        lines.append(f"{margin}{fg}{char * min(text_width + extra, width)}{RESET}")
 
     return lines
 
@@ -93,7 +88,7 @@ def render_heading_simple(
     content: str,
     style: RenderStyle,
 ) -> str:
-    """Render a heading as a single line (no centering/decorations).
+    """Render a heading as a single line (no wrapping/decorations).
 
     Useful for inline contexts or simple output.
 
@@ -105,16 +100,5 @@ def render_heading_simple(
     Returns:
         Formatted heading string.
     """
-    if level <= 2:
-        fg = fg_color(style.bright)
-        return f"{BOLD_ON}{fg}{content}{RESET}"
-    elif level == 3:
-        fg = fg_color(style.head)
-        return f"{BOLD_ON}{fg}{content}{RESET}"
-    elif level == 4:
-        return f"{BOLD_ON}{content}{BOLD_OFF}"
-    elif level == 5:
-        return content
-    else:
-        fg = fg_color(style.grey)
-        return f"{fg}{content}{RESET}"
+    open_code, close_code = _heading_codes(level, style)
+    return f"{open_code}{content}{close_code}"

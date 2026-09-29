@@ -7,7 +7,6 @@ and maintains rendering state across events.
 
 from __future__ import annotations
 
-import base64
 import os
 import sys
 from typing import TYPE_CHECKING, TextIO
@@ -28,7 +27,9 @@ from termflow.ansi import (
     UNDERLINE_OFF,
     UNDERLINE_ON,
     fg_color,
+    make_clipboard_copy,
     make_link,
+    visible_length,
 )
 from termflow.parser.events import (
     BlockquoteEndEvent,
@@ -67,15 +68,17 @@ from termflow.parser.events import (
     ThinkBlockStartEvent,
     UnderlineEvent,
 )
-from termflow.render.code import render_code_end, render_code_line, render_code_start
-from termflow.render.heading import render_heading
-from termflow.render.list import get_bullet, render_list_item
-from termflow.render.mermaid import (
-    MermaidParseError,
-    RenderConfig as MermaidRenderConfig,
-    is_mermaid_flowchart,
-    render_mermaid_to_terminal,
+from termflow.render.code import (
+    render_code_end,
+    render_code_line,
+    render_code_start,
+    wrap_code_line,
 )
+from termflow.render.heading import render_heading
+from termflow.render.inline import format_inline
+from termflow.render.list import get_bullet, render_list_item
+from termflow.render.mermaid import RenderConfig as MermaidRenderConfig
+from termflow.render.mermaid import render_mermaid_to_terminal
 from termflow.render.style import RenderFeatures, RenderStyle
 from termflow.render.table import (
     TableRenderState,
@@ -92,7 +95,9 @@ class Renderer:
 
     Attributes:
         output: Output stream for writing
-        width: Terminal width in columns
+        width: Rendering width in columns -- pinned, or the live terminal
+            width (re-detected per block, so resizes apply to new output)
+        max_width: Optional cap applied to ``width``
         style: Color/style configuration
         features: Feature flags
         highlighter: Syntax highlighter instance
@@ -114,21 +119,25 @@ class Renderer:
         features: RenderFeatures | None = None,
         highlighter: Highlighter | None = None,
         dim: bool = False,
+        max_width: int | None = None,
         mermaid_render_config: MermaidRenderConfig | None = None,
     ) -> None:
         """Initialize the renderer.
 
         Args:
             output: Output stream (default: sys.stdout)
-            width: Terminal width (default: auto-detect)
+            width: Fixed width. ``None`` tracks the live terminal width,
+                so output rendered after a resize fits the new size.
             style: Color/style configuration
             features: Feature flags
             highlighter: Syntax highlighter (created if not provided)
             dim: If True, render all output in dim/faded style (for thinking blocks)
+            max_width: Cap on the rendering width (``None`` = uncapped)
             mermaid_render_config: Configuration for mermaid diagram rendering
         """
         self.output = output or sys.stdout
-        self.width = width or self._detect_width()
+        self._width = width or None
+        self.max_width = max_width
         self.style = style or RenderStyle()
         self.features = features or RenderFeatures()
         self.highlighter = highlighter or Highlighter()
@@ -142,6 +151,7 @@ class Renderer:
         # Rendering state
         self._code_language: str | None = None
         self._code_buffer: str = ""
+        self._code_width = 0  # Pinned per block so a resize can't tear its borders
         self._markdown_passthrough = False  # For code blocks with no lang or markdown lang
         self._nested_parser: Parser | None = None  # For parsing markdown inside code blocks
         self._in_blockquote = False
@@ -168,6 +178,16 @@ class Renderer:
             return os.get_terminal_size().columns
         except OSError:
             return 80
+
+    @property
+    def width(self) -> int:
+        """Rendering width: the pinned width, or the live terminal width."""
+        width = self._width if self._width is not None else self._detect_width()
+        return min(width, self.max_width) if self.max_width else width
+
+    @width.setter
+    def width(self, width: int | None) -> None:
+        self._width = width or None
 
     def _dim_text(self, text: str) -> str:
         """Apply dim styling to text, preserving it through RESET codes."""
@@ -204,61 +224,29 @@ class Renderer:
 
     def _current_width(self) -> int:
         """Get current available width accounting for margins."""
-        margin_width = self._blockquote_depth * 3 if self._in_blockquote else 0
-        return max(20, self.width - margin_width)
+        return max(20, self.width - visible_length(self._margin()))
+
+    def _wrap_width(self, width: int) -> int:
+        """``width``, or unbounded when the ``wrap_text`` feature is off."""
+        return width if self.features.wrap_text else sys.maxsize
+
+    def _wrap(self, text: str, first_prefix: str = "", cont_prefix: str = "") -> list[str]:
+        """Word-wrap ``text`` to the full width, prefixes included."""
+        return text_wrap(text, self._wrap_width(self.width), 0, first_prefix, cont_prefix)
 
     def _format_inline(self, text: str) -> str:
         """Format text with inline formatting, returning ANSI string."""
-        from termflow.parser.inline import InlineElement, InlineParser
-
-        parser = InlineParser()
-        tokens = parser.parse(text)
-        parts: list[str] = []
-
-        for token in tokens:
-            t = token.element_type
-            if t == InlineElement.TEXT:
-                parts.append(token.content)
-            elif t == InlineElement.BOLD:
-                parts.append(f"{BOLD_ON}{token.content}{BOLD_OFF}")
-            elif t == InlineElement.ITALIC:
-                parts.append(f"{ITALIC_ON}{token.content}{ITALIC_OFF}")
-            elif t == InlineElement.BOLD_ITALIC:
-                parts.append(f"{BOLD_ON}{ITALIC_ON}{token.content}{ITALIC_OFF}{BOLD_OFF}")
-            elif t == InlineElement.CODE:
-                # Render inline code with dim styling (no backticks, just styled content)
-                parts.append(f"{DIM_ON}{token.content}{DIM_OFF}")
-            elif t == InlineElement.UNDERLINE:
-                parts.append(f"{UNDERLINE_ON}{token.content}{UNDERLINE_OFF}")
-            elif t == InlineElement.STRIKEOUT:
-                parts.append(f"{STRIKEOUT_ON}{token.content}{STRIKEOUT_OFF}")
-            elif t == InlineElement.LINK:
-                link_fg = fg_color(self.style.link)
-                grey = fg_color(self.style.grey)
-                link_text = f"{link_fg}{token.content}{RESET}"
-                if self.features.hyperlinks and token.url:
-                    parts.append(make_link(token.url, link_text))
-                else:
-                    parts.append(f"{UNDERLINE_ON}{link_text}{UNDERLINE_OFF}")
-                if token.url:
-                    parts.append(f" {grey}({token.url}){RESET}")
-            elif t == InlineElement.IMAGE:
-                symbol_fg = fg_color(self.style.symbol)
-                grey = fg_color(self.style.grey)
-                parts.append(f"{symbol_fg}[IMAGE: {token.content}]{RESET}")
-                if token.url:
-                    parts.append(f" {grey}({token.url}){RESET}")
-            elif t == InlineElement.FOOTNOTE:
-                symbol_fg = fg_color(self.style.symbol)
-                parts.append(f"{symbol_fg}[{token.content}]{RESET}")
-            else:
-                parts.append(token.content)
-
-        return "".join(parts)
+        return format_inline(text, self.style, self.features)
 
     def _render_inline_text(self, text: str) -> None:
-        """Render text with inline formatting (bold, italic, etc.)."""
-        self._write(self._format_inline(text))
+        """Render text with inline formatting, word-wrapped to the width.
+
+        The final line is left open: the paragraph's NewlineEvent ends it.
+        """
+        *full_lines, last_line = self._wrap(self._format_inline(text)) or [""]
+        for line in full_lines:
+            self._writeln(line)
+        self._write(last_line)
 
     def render(self, event: ParseEvent) -> None:
         """Render a single parse event.
@@ -325,7 +313,7 @@ class Renderer:
         # === Heading Events ===
         elif isinstance(event, HeadingEvent):
             margin = self._margin()
-            width = self._current_width()
+            width = self._wrap_width(self._current_width())
             # Format inline content (bold, italic, code, etc.)
             formatted_content = self._format_inline(event.content)
             for line in render_heading(event.level, formatted_content, width, margin, self.style):
@@ -353,13 +341,7 @@ class Renderer:
                 return  # Don't render code block chrome yet
 
             self._markdown_passthrough = False
-            self._mermaid_mode = False
-            margin = self._margin()
-            width = self._current_width()
-            for line in render_code_start(
-                event.language, width, margin, self.style, self.features.pretty_pad
-            ):
-                self._writeln(line)
+            self._start_code_block(event.language)
 
         elif isinstance(event, CodeBlockLineEvent):
             # If in markdown passthrough mode, parse and render as markdown
@@ -374,19 +356,7 @@ class Renderer:
                 self._mermaid_buffer.append(event.line)
                 return
 
-            # Accumulate code for clipboard
-            if self._code_buffer:
-                self._code_buffer += "\n"
-            self._code_buffer += event.line
-
-            # Highlight and render
-            highlighted = self.highlighter.highlight_line(event.line, self._code_language or "text")
-            margin = self._margin()
-            width = self._current_width()
-            line = render_code_line(
-                event.line, highlighted, width, margin, self.style, self.features.pretty_pad
-            )
-            self._writeln(line)
+            self._render_code_line(event.line)
 
         elif isinstance(event, CodeBlockEndEvent):
             # If in markdown passthrough mode, finalize the nested parser
@@ -400,40 +370,11 @@ class Renderer:
                 self._code_buffer = ""
                 return
 
-            # If in mermaid mode, attempt to render the diagram
             if self._mermaid_mode:
-                self._mermaid_mode = False
-                code = "\n".join(self._mermaid_buffer)
-                self._mermaid_buffer = []
-
-                try:
-                    # Attempt to render mermaid diagram
-                    output = render_mermaid_to_terminal(
-                        code,
-                        width=self._current_width(),
-                        render_config=self.mermaid_render_config,
-                    )
-                    self._write(output)
-                    self._writeln()  # Ensure newline after diagram
-                except (MermaidParseError, Exception):
-                    # Fallback: render as styled code block
-                    self._render_mermaid_fallback(code)
-
-                self._code_language = None
-                self._code_buffer = ""
+                self._finish_mermaid_block()
                 return
 
-            margin = self._margin()
-            width = self._current_width()
-            for line in render_code_end(width, margin, self.style, self.features.pretty_pad):
-                self._writeln(line)
-
-            # Clipboard integration (OSC 52)
-            if self.features.clipboard and self._code_buffer:
-                self._copy_to_clipboard(self._code_buffer)
-
-            self._code_language = None
-            self._code_buffer = ""
+            self._end_code_block()
 
         # === List Events ===
         elif isinstance(event, ListItemStartEvent):
@@ -444,7 +385,7 @@ class Renderer:
 
         elif isinstance(event, ListItemContentEvent):
             margin = self._margin()
-            width = self._current_width()
+            width = self._wrap_width(self._current_width())
 
             # Determine bullet
             if self._list_ordered and self._list_number is not None:
@@ -540,12 +481,7 @@ class Renderer:
 
         elif isinstance(event, BlockquoteLineEvent):
             margin = self._margin()
-            width = self._current_width()
-
-            # Format inline content
-            formatted_text = self._format_inline(event.text)
-
-            for line in text_wrap(formatted_text, width, 0, margin, margin):
+            for line in self._wrap(self._format_inline(event.text), margin, margin):
                 self._writeln(line)
 
         elif isinstance(event, BlockquoteEndEvent):
@@ -561,10 +497,9 @@ class Renderer:
             self._blockquote_depth = 1
 
         elif isinstance(event, ThinkBlockLineEvent):
-            fg = fg_color(self.style.grey)
-            dim = DIM_ON
-            formatted_text = self._format_inline(event.text)
-            self._writeln(f"{dim}{fg}│{RESET} {dim}{formatted_text}{DIM_OFF}")
+            prefix = f"{DIM_ON}{fg_color(self.style.grey)}│{RESET} {DIM_ON}"
+            for line in self._wrap(self._format_inline(event.text), prefix, prefix):
+                self._writeln(f"{line}{DIM_OFF}")
 
         elif isinstance(event, ThinkBlockEndEvent):
             fg = fg_color(self.style.grey)
@@ -589,6 +524,77 @@ class Renderer:
         elif isinstance(event, ParagraphEndEvent):
             self._in_paragraph = False
 
+    def _start_code_block(self, label: str | None) -> None:
+        """Pin the block width and emit the code block header."""
+        margin = self._margin()
+        self._code_width = self._current_width()
+        for line in render_code_start(
+            label, self._code_width, margin, self.style, self.features.pretty_pad
+        ):
+            self._writeln(line)
+
+    def _render_code_line(self, line: str) -> None:
+        """Highlight, wrap, and emit one code line, buffering it for the clipboard."""
+        if self._code_buffer:
+            self._code_buffer += "\n"
+        self._code_buffer += line
+
+        highlighted = self.highlighter.highlight_line(line, self._code_language or "text")
+        margin = self._margin()
+        width = self._code_width
+        chunks = (
+            wrap_code_line(highlighted, width, self.style)
+            if self.features.wrap_text
+            else [highlighted]
+        )
+        for chunk in chunks:
+            self._writeln(
+                render_code_line(line, chunk, width, margin, self.style, self.features.pretty_pad)
+            )
+
+    def _end_code_block(self) -> None:
+        """Emit the code block footer, copy to clipboard, and clear block state."""
+        margin = self._margin()
+        for line in render_code_end(self._code_width, margin, self.style, self.features.pretty_pad):
+            self._writeln(line)
+
+        # Clipboard integration (OSC 52)
+        if self.features.clipboard and self._code_buffer:
+            self._write(make_clipboard_copy(self._code_buffer))
+
+        self._code_language = None
+        self._code_buffer = ""
+
+    def _finish_mermaid_block(self) -> None:
+        """Render the buffered mermaid diagram, falling back to a code block on failure."""
+        self._mermaid_mode = False
+        code = "\n".join(self._mermaid_buffer)
+        self._mermaid_buffer = []
+
+        try:
+            output = render_mermaid_to_terminal(
+                code,
+                width=self._current_width(),
+                render_config=self.mermaid_render_config,
+            )
+        except Exception:
+            # Any failure (parse, layout, imaging) degrades to showing the source.
+            self._render_mermaid_fallback(code)
+            return
+
+        self._write(output)
+        self._writeln()  # Ensure newline after diagram
+        self._code_language = None
+        self._code_buffer = ""
+
+    def _render_mermaid_fallback(self, code: str) -> None:
+        """Render mermaid source as a plain code block (mermaid isn't in Pygments)."""
+        self._code_language = "text"
+        self._start_code_block("mermaid 📊")
+        for line in code.splitlines():
+            self._render_code_line(line)
+        self._end_code_block()
+
     def render_all(self, events: list[ParseEvent]) -> None:
         """Render multiple events.
 
@@ -598,69 +604,11 @@ class Renderer:
         for event in events:
             self.render(event)
 
-    def _copy_to_clipboard(self, text: str) -> None:
-        """Copy text to clipboard using OSC 52.
-
-        OSC 52 is supported by many modern terminals including:
-        - iTerm2, Kitty, Alacritty, WezTerm, foot
-        - tmux (with set-clipboard on)
-        - Some versions of xterm
+    def set_width(self, width: int | None) -> None:
+        """Pin the rendering width, or pass ``None`` to track the terminal.
 
         Args:
-            text: Text to copy to clipboard.
-        """
-        try:
-            encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
-            # OSC 52 sequence: ESC ] 52 ; c ; BASE64 BEL
-            self._write(f"\x1b]52;c;{encoded}\x07")
-        except Exception:
-            pass  # Silently fail if clipboard doesn't work
-
-    def _render_mermaid_fallback(self, code: str) -> None:
-        """Render mermaid code as a styled code block (fallback).
-
-        Used when diagram rendering fails - displays the mermaid source
-        with syntax highlighting and a special indicator.
-
-        Args:
-            code: Mermaid source code to render.
-        """
-        margin = self._margin()
-        width = self._current_width()
-
-        # Render code block start with mermaid label and diagram indicator
-        for line in render_code_start(
-            "mermaid 📊", width, margin, self.style, self.features.pretty_pad
-        ):
-            self._writeln(line)
-
-        # Render each line with syntax highlighting
-        for code_line in code.splitlines():
-            # Accumulate for clipboard
-            if self._code_buffer:
-                self._code_buffer += "\n"
-            self._code_buffer += code_line
-
-            # Use simple highlighting (mermaid isn't in Pygments)
-            highlighted = self.highlighter.highlight_line(code_line, "text")
-            line = render_code_line(
-                code_line, highlighted, width, margin, self.style, self.features.pretty_pad
-            )
-            self._writeln(line)
-
-        # Render code block end
-        for line in render_code_end(width, margin, self.style, self.features.pretty_pad):
-            self._writeln(line)
-
-        # Clipboard integration
-        if self.features.clipboard and self._code_buffer:
-            self._copy_to_clipboard(self._code_buffer)
-
-    def set_width(self, width: int) -> None:
-        """Update the terminal width.
-
-        Args:
-            width: New width in columns.
+            width: New width in columns, or ``None`` for live detection.
         """
         self.width = width
 
@@ -697,6 +645,7 @@ class Renderer:
         self._table_alignments = []
         self._code_language = None
         self._code_buffer = ""
+        self._code_width = 0
         self._markdown_passthrough = False
         self._nested_parser = None
         self._in_blockquote = False
@@ -708,64 +657,3 @@ class Renderer:
         self._in_paragraph = False
         self._mermaid_mode = False
         self._mermaid_buffer = []
-
-
-def render_markdown(
-    markdown: str,
-    width: int | None = None,
-    output: TextIO | None = None,
-    style: RenderStyle | None = None,
-) -> None:
-    """Convenience function to render markdown to terminal.
-
-    Args:
-        markdown: Markdown text to render.
-        width: Terminal width (auto-detect if None).
-        output: Output stream (stdout if None).
-        style: Render style (default if None).
-
-    Example:
-        >>> render_markdown("# Hello\n\nThis is **bold**!")
-    """
-    from termflow.parser import Parser
-
-    parser = Parser()
-    renderer = Renderer(output=output, width=width, style=style)
-
-    events = parser.parse_document(markdown)
-    renderer.render_all(events)
-
-
-def render_streaming(
-    lines_iter,
-    width: int | None = None,
-    output: TextIO | None = None,
-    style: RenderStyle | None = None,
-) -> None:
-    """Render markdown from a streaming source.
-
-    Args:
-        lines_iter: Iterator/generator yielding lines.
-        width: Terminal width (auto-detect if None).
-        output: Output stream (stdout if None).
-        style: Render style (default if None).
-
-    Example:
-        >>> def stream():
-        ...     yield "# Hello"
-        ...     yield ""
-        ...     yield "World!"
-        >>> render_streaming(stream())
-    """
-    from termflow.parser import Parser
-
-    parser = Parser()
-    renderer = Renderer(output=output, width=width, style=style)
-
-    for line in lines_iter:
-        events = parser.parse_line(line)
-        renderer.render_all(events)
-
-    # Finalize
-    final_events = parser.finalize()
-    renderer.render_all(final_events)

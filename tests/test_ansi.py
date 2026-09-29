@@ -202,6 +202,32 @@ class TestWrapAnsi:
         lines = wrap_ansi("12345", 5)
         assert len(lines) == 1
 
+    def test_word_boundary_wrap(self):
+        """Words that fit in the width should never be split."""
+        lines = wrap_ansi("Sorts bananas across manifolds", 10)
+        # None of these whole words should appear split.
+        for word in ("Sorts", "bananas", "across", "manifolds"):
+            assert any(word in ln for ln in lines), f"word '{word}' was split: {lines}"
+
+    def test_long_word_char_wraps(self):
+        """A single word longer than width falls back to char wrapping."""
+        lines = wrap_ansi("Hyperdimensional", 8)
+        assert len(lines) >= 2
+        # All lines must respect the width cap.
+        from termflow.ansi.utils import visible_length
+
+        for ln in lines:
+            assert visible_length(ln) <= 8
+
+    def test_respects_width_cap(self):
+        """No produced line should exceed the requested width."""
+        from termflow.ansi.utils import visible_length
+
+        text = "The quick brown fox jumps over the lazy dog every single time"
+        for w in (8, 12, 20, 40):
+            for ln in wrap_ansi(text, w):
+                assert visible_length(ln) <= w, f"width={w}: {ln!r}"
+
 
 class TestConstants:
     """Test ANSI constants."""

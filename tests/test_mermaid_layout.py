@@ -7,13 +7,10 @@ Comprehensive tests covering:
 - Edge positioning
 """
 
-import pytest
-
 from termflow.render.mermaid import (
     Direction,
     Edge,
     EdgeStyle,
-    GraphLayout,
     MermaidGraph,
     Node,
     NodeShape,

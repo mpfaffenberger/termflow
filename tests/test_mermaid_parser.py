@@ -12,11 +12,8 @@ import pytest
 
 from termflow.render.mermaid import (
     Direction,
-    Edge,
     EdgeStyle,
-    MermaidGraph,
     MermaidParseError,
-    Node,
     NodeShape,
     is_mermaid_flowchart,
     parse_mermaid,

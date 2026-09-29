@@ -28,11 +28,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
-
+from typing import ClassVar
 
 # =============================================================================
 # Exceptions
@@ -213,7 +209,7 @@ class MermaidParser:
     NODE_PLAIN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)$")
 
     # Edge patterns (order matters - check longer patterns first)
-    EDGE_PATTERNS: list[tuple[re.Pattern[str], EdgeStyle, bool]] = [
+    EDGE_PATTERNS: ClassVar[list[tuple[re.Pattern[str], EdgeStyle, bool]]] = [
         # Dotted arrow: -.->
         (re.compile(r"^-\.->$"), EdgeStyle.DOTTED, True),
         # Dotted line: -.-
