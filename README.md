@@ -215,6 +215,44 @@ PagerBuilder("README").markdown(open("README.md").read()).run()
 PagerBuilder("Log").reflow(lambda width: render_my_lines(width)).run()
 ```
 
+## Swappable agent histories
+
+`AgentHistory` keeps independent in-memory transcripts for a main agent and its
+workers. Give each producer its own file-like buffer (also accepted by
+`Renderer(output=...)`), then open a live viewer:
+
+```python
+from termflow.tui import AgentHistory, AgentHistoryViewer
+
+history = AgentHistory()
+main_output = history.add("main")
+worker_output = history.add("worker")
+main_output.write("Main agent started\n")
+worker_output.write("Worker started\n")
+
+# Producers can keep writing from worker threads while the viewer runs.
+AgentHistoryViewer(history).run()
+```
+
+Tab / Right cycles forward; Left cycles backward. Each agent retains its scroll
+position. New output follows automatically until you scroll away from the bottom;
+End / G resumes following. Hidden agents continue collecting output, and agents
+registered while the viewer runs join the cycle. `select(agent_id)` switches
+programmatically on the viewer's thread; `active_agent` identifies the selection
+for host-provided key handlers. All normal pager navigation and close keys apply.
+
+Buffers accept plain text or ANSI-styled, newline-delimited text, not arbitrary
+terminal cursor-control output. Lines are clipped to the viewport like a pager,
+not reflowed. Histories are retained in memory without a size limit. Buffer writes
+and registration are thread-safe; viewer operations belong to its UI thread.
+Use `use_alt_screen=False` inside an existing `terminal_session`. Only the viewer
+should write to the real terminal while it is open. In async applications, run
+the blocking viewer in a worker with coordinated input ownership and cancellation.
+
+This is a viewing/output primitive: routing prompts, steering, cancellation, and
+agent lifecycles remain the host application's responsibility. It does not attach
+to Code Puppy or CLAI2 automatically.
+
 ## Configuration
 
 Create `~/.config/termflow/config.toml` (or point `TERMFLOW_CONFIG` at a

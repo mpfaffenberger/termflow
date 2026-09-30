@@ -8,6 +8,7 @@ prompt_toolkit -- just escape sequences and small, injectable pieces.
 * :mod:`termflow.tui.menu` -- :class:`MenuBuilder` and friends.
 * :mod:`termflow.tui.textinput` -- :class:`TextInputBuilder` line editing.
 * :mod:`termflow.tui.pager` -- :class:`PagerBuilder` scrollable viewing.
+* :mod:`termflow.tui.history` -- swappable live agent histories.
 * :mod:`termflow.tui.completion` -- a minimal completer protocol.
 * :mod:`termflow.tui.layout` -- responsive split-pane composition.
 """
@@ -19,6 +20,7 @@ from termflow.tui.completion import (
     Document,
     merge_completers,
 )
+from termflow.tui.history import AgentHistory, AgentHistoryViewer, HistoryBuffer
 from termflow.tui.keys import Key, parse_key, read_key
 from termflow.tui.layout import (
     COLLAPSE_BELOW,
@@ -39,10 +41,13 @@ from termflow.tui.textinput import TextInput, TextInputBuilder, TextInputResult
 
 __all__ = [
     "COLLAPSE_BELOW",
+    "AgentHistory",
+    "AgentHistoryViewer",
     "CompleteEvent",
     "Completer",
     "Completion",
     "Document",
+    "HistoryBuffer",
     "Key",
     "Menu",
     "MenuBuilder",
