@@ -5,6 +5,19 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-09-30
+
+### Added
+
+- `AgentHistory`, `HistoryBuffer`, and `AgentHistoryViewer` in `termflow.tui`:
+  independent, thread-safe output sinks and a live, swappable agent transcript
+  viewer. Tab / arrow keys switch agents while preserving per-agent scroll and
+  follow state; hidden agents continue collecting output. Buffers work with
+  `Renderer(output=...)`, and host key handlers can inspect the selected agent.
+- Headless tests covering concurrent output, switching, live updates, resize,
+  and terminal restoration. Agent steering and lifecycle management remain
+  the host application's responsibility.
+
 ## [0.10.0] - 2026-09-26
 
 ### Added
