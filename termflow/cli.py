@@ -46,6 +46,8 @@ def create_parser() -> argparse.ArgumentParser:
         "  tf --width 100 document.md\n"
         "  tf --pager README.md\n"
         "  tf --style dracula README.md\n"
+        "  tf --doom\n"
+        "  tf --doom-shareware\n"
         '  echo "# Hello" | tf',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -118,6 +120,18 @@ def create_parser() -> argparse.ArgumentParser:
         "--no-pretty",
         action="store_true",
         help="Disable pretty code block borders",
+    )
+
+    parser.add_argument(
+        "--doom",
+        action="store_true",
+        help="Play the live-mode raycaster demo (Ctrl+Q quits)",
+    )
+
+    parser.add_argument(
+        "--doom-shareware",
+        action="store_true",
+        help='Play the real DOOM shareware episode via doom.wasm (needs "termflow-md[doom]")',
     )
 
     parser.add_argument(
@@ -324,6 +338,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_syntax_styles:
         list_syntax_styles()
         return 0
+
+    if args.doom:
+        from termflow.live.demos.doom import main as doom_main
+
+        return doom_main([])
+
+    if args.doom_shareware:
+        from termflow.live.demos.doom_wasm import main as doom_wasm_main
+
+        return doom_wasm_main([])
 
     # Load config
     config = Config.load(args.config)

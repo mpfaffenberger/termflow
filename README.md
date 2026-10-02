@@ -34,6 +34,11 @@ no Rich.
 - **Interactive menus** (`termflow.tui`) — a declarative menu builder with
   search, pagination, multi-select, and live preview panes, built on plain
   ANSI escape codes
+- **Live mode** (`termflow.live`) — real-time, multi-window terminal apps:
+  a frame loop with diffed rendering, true key press/release input (Windows
+  Terminal included), truecolor half-block pixel windows, and markdown panes.
+  `tf --doom` plays a raycaster next to a streaming mission briefing, and
+  `tf --doom-shareware` plays the real DOOM
 - **OSC 8 hyperlinks** and **OSC 52 clipboard** integration where the
   terminal supports them
 - **Configurable** via TOML config file or programmatic API
@@ -252,6 +257,99 @@ the blocking viewer in a worker with coordinated input ownership and cancellatio
 This is a viewing/output primitive: routing prompts, steering, cancellation, and
 agent lifecycles remain the host application's responsibility. It does not attach
 to Code Puppy or CLAI2 automatically.
+
+## Live mode
+
+`termflow.live` runs a frame loop instead of waiting for keys: every frame it
+polls input, updates each window, paints a cell buffer, and sends only the
+cells that changed since the previous frame. Windows can hold markdown, logs,
+or raw RGB framebuffers drawn with `▀` half-blocks (two truecolor pixels per
+cell, no graphics protocol needed).
+
+```bash
+tf --doom                           # the demo: WASD/arrows, Space fires, Ctrl+Q quits
+python -m termflow.live.demos.doom --fps 60
+```
+
+```python
+from termflow.live import LiveApp, MarkdownView, PixelWidget, TextLog, Window, hsplit, vsplit
+
+
+class Plasma(PixelWidget):
+    t = 0.0
+
+    def update(self, dt, keys):
+        self.t += dt * (3 if keys.is_down(" ") else 1)  # held keys, not just presses
+
+    def render(self, surface):
+        w, t = surface.width, int(self.t * 60)
+        for i in range(len(surface.pixels)):
+            surface.pixels[i] = ((i % w + t) & 255) << 16 | ((i // w * 4 + t) & 255)
+
+
+def layout(area):  # one rect per window
+    left, right = hsplit(area, 2, 1)
+    return [left, *vsplit(right, 1, 1)]
+
+
+log = TextLog()  # file-like: Renderer(output=log) works
+log.write("hello from the log\n")
+windows = [
+    Window("Plasma", Plasma()),
+    Window("Notes", MarkdownView("# Hi", reveal_rate=60)),
+    Window("Log", log),
+]
+LiveApp(windows, layout).run()  # Tab cycles focus, Ctrl+Q quits
+```
+
+Input reports **key releases**, so movement feels like a game instead of
+keyboard autorepeat:
+
+- **Windows** (Windows Terminal and conhost): native console input records via
+  `ReadConsoleInputW`, including key-up events.
+- **POSIX**: raw mode plus the kitty keyboard protocol (kitty, WezTerm, foot,
+  Ghostty, recent iTerm2 and Alacritty). Other terminals fall back to
+  autorepeat-based holds, which feel a little sticky. The demo's status bar
+  shows which input mode is active.
+
+### The real DOOM
+
+```bash
+pip install "termflow-md[doom]"      # adds the wasmtime WebAssembly runtime
+tf --doom-shareware                  # the shareware episode, Knee-Deep in the Dead
+python -m termflow.live.demos.doom_wasm --wad freedoom1.wad   # or your own WADs
+```
+
+This runs [doom.wasm](https://github.com/jacobenget/doom.wasm) (doomgeneric
+compiled to WebAssembly) inside a `FramebufferView`, letterboxed to 4:3, with
+Doom's console output in a side window. termflow (MIT) does not bundle the
+engine. On first use it downloads the GPL-2.0 module from its GitHub release
+(about 4.6 MB, shareware WAD included), checks it against a pinned SHA-256,
+and caches it (`%LOCALAPPDATA%\termflow` on Windows, `~/.cache/termflow`
+elsewhere). Vanilla controls apply: arrows move, Ctrl fires, Space opens
+doors, Esc opens the menu, Tab shows the automap, and `,` / `.` strafe.
+Saving games is not supported yet. For more pixels, zoom the terminal out
+(Ctrl+- in Windows Terminal).
+
+**Sound (Windows):** doom.wasm has no audio output, so termflow reads Doom's
+own sound bookkeeping from the module's memory. Each `S_sfx` entry's
+`usefulness` count goes up when an effect starts, and `S_music` records the
+current song. The samples come from the WAD: `DS*` lumps are mixed through
+`waveOut`, and `D_*` MUS scores are converted to MIDI for the built-in
+Microsoft GS Wavetable Synth. Both use `winmm` via ctypes, so there are no
+extra dependencies. Effects play at full volume, because Doom's distance and
+panning calculations never reach memory we can read. `--no-sound` turns it
+off. Other platforms are silent for now.
+
+Frames are wrapped in synchronized output (DEC mode 2026) to avoid tearing.
+Terminals without it ignore the sequence. For an engine that produces its own
+frames (an emulator, a native game port, video), push them into a
+`FramebufferView` with `set_frame(pixels, width, height)` and they are scaled
+to the window. Diffing keeps static panes free. Pixel rows go through a
+specialized encoder that uses `▀`, `▄`, or a space depending on which needs
+the fewest color changes. DOOM measured in Windows Terminal: about 40 fps
+(the cap) up to roughly 225×60, and about 20 fps at 420×110, where the
+terminal's parsing speed becomes the limit.
 
 ## Configuration
 

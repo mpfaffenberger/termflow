@@ -50,6 +50,10 @@ dev = [
     "ruff>=0.4.0",
     "twine>=6.0.0",
 ]
+# `tf --doom-shareware`: runs the real (GPL-2.0) doom.wasm, downloaded on first use.
+doom = [
+    "wasmtime>=25.0.0",
+]
 
 [project.scripts]
 tf = "termflow.cli:main"
@@ -88,6 +92,12 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# ctypes `_fields_` are class-level declarations by design. Older ruff flags
+# them (RUF012), newer ruff doesn't and then flags an inline noqa as unused
+# (RUF100); a per-file ignore keeps both versions happy.
+"termflow/live/_win*.py" = ["RUF012"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["termflow"]
