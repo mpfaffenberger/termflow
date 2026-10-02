@@ -5,6 +5,60 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-10-02
+
+### Added
+
+- **Live mode** (`termflow.live`): a real-time, multi-window terminal app
+  framework. `LiveApp` runs a fixed-rate frame loop with `Window`s, Tab focus
+  cycling, `hsplit` / `vsplit` layouts, and a status bar.
+- `ScreenBuffer` / `Region`: a truecolor cell grid with clipped drawing,
+  boxes, wide-character handling, and ANSI ingest (SGR 16/256/truecolor; OSC
+  hyperlinks skipped), so termflow-rendered markdown can be drawn into windows.
+- `render_diff`: sends only changed cells (one cursor move per dirty row span,
+  minimal SGR deltas), wrapped in synchronized output (DEC 2026). Pixel spans
+  get a specialized encoder that picks `▀`, `▄`, or a space for whichever
+  needs the fewest color changes. Uniform text runs are written as whole slices.
+- `PixelSurface` / `PixelWidget`: RGB framebuffers drawn as `▀` half-blocks,
+  with two pixels per cell. `FramebufferView` scales frames pushed by external
+  engines.
+- `MarkdownView` (scrollable, can stream in at a set rate) and `TextLog`
+  (thread-safe and file-like, so `Renderer(output=log)` works).
+- Real-time input with key press/release events and held-key state
+  (`KeyEvent`, `KeyState`). Windows reads native console records
+  (`ReadConsoleInputW`), which carry true key-up in Windows Terminal and
+  conhost. POSIX negotiates the kitty keyboard protocol and falls back to
+  autorepeat-based holds elsewhere.
+- `tf --doom` / `python -m termflow.live.demos.doom`: a pure-Python textured
+  raycaster with demons, shooting, and a minimap. It runs next to a streaming
+  markdown briefing and an event log, at about 30 fps in Windows Terminal.
+- `tf --doom-shareware` / `python -m termflow.live.demos.doom_wasm [--wad ...]`:
+  the real DOOM via [doom.wasm](https://github.com/jacobenget/doom.wasm) on
+  wasmtime (new optional extra: `termflow-md[doom]`). The GPL-2.0 engine is not
+  bundled. It is downloaded on first use, verified against a pinned SHA-256,
+  and cached per user. Custom WADs are supported.
+- DOOM sound on Windows, even though doom.wasm has no audio output. Effect
+  starts are read from Doom's `S_sfx` table in linear memory, polled from the
+  `timeInMilliseconds` import that runs right after each tic. The current song
+  is read from `S_music`. Samples come from the WAD: DMX PCM is mixed into
+  `waveOut`, and MUS is converted to MIDI for the system synth
+  (`termflow.live._winmm`, ctypes only). Use `--no-sound` to disable it.
+- `FramebufferView(aspect=...)` letterboxes frames to a display aspect ratio.
+  `PixelSurface.blit_scaled` accepts a destination rectangle and ignores the
+  high byte, so ARGB sources work unchanged.
+- `KeyState.held` / `KeyState.pressed` for widgets that forward key state to
+  an engine (taps released within one frame still count as presses).
+- `LiveApp(hints=...)` customizes the status-bar key hints.
+
+### Changed
+
+- Version 1.0.0. termflow now includes a full TUI runtime alongside the
+  streaming renderer. Existing `termflow.tui` and rendering APIs are
+  unchanged.
+- In live mode the focused widget sees each key press before the app does. A
+  widget that returns True from `on_key` for Tab keeps it (DOOM's automap),
+  so Tab no longer cycles focus away from it.
+
 ## [0.11.0] - 2026-09-30
 
 ### Added

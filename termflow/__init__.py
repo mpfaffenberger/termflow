@@ -25,13 +25,18 @@ With configuration:
     >>> style = RenderStyle.dracula()
     >>> renderer = Renderer(style=style, features=config.features)
 
+Live mode (real-time, multi-window terminal apps):
+    >>> from termflow.live import LiveApp, MarkdownView, Window
+    >>> LiveApp([Window("Notes", MarkdownView("# Hi"))], lambda area: [area]).run()
+
 CLI usage:
     $ cat README.md | tf
     $ tf document.md
     $ tf --style dracula README.md
+    $ tf --doom
 """
 
-__version__ = "0.11.0"
+__version__ = "1.0.0"
 
 from termflow.config import Config
 from termflow.diff import DiffRenderer, DiffStream, DiffTheme, render_diff
