@@ -1,13 +1,126 @@
 """HSV/RGB color utilities for ANSI terminal colors.
 
 This module provides color conversion functions and ANSI escape sequence
-generators for 24-bit (truecolor) terminal support.
+generators. Colors are emitted as 24-bit (truecolor) sequences when the
+terminal supports them and as the nearest xterm 256-color index otherwise.
+
+Terminals without truecolor support (notably macOS Terminal.app) don't ignore
+``ESC[38;2;R;G;Bm``: they read each number as its own SGR code, so an RGB
+component such as 104 or 106 becomes a bright blue or cyan *background*.
 """
 
+import os
 import re
+import sys
+from collections.abc import Mapping
+from typing import Literal
 
 # Regex for hex color validation
 _HEX_COLOR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
+
+ColorMode = Literal["truecolor", "256"]
+_COLOR_MODES: tuple[ColorMode, ...] = ("truecolor", "256")
+_color_mode: ColorMode | None = None  # None: detect on first use
+
+# Channel levels of the xterm 6x6x6 color cube (indices 16-231).
+_CUBE_LEVELS = (0, 95, 135, 175, 215, 255)
+
+
+def detect_color_mode(
+    environ: Mapping[str, str] | None = None, platform: str | None = None
+) -> ColorMode:
+    """Detect whether the terminal supports truecolor, the same way Rich does.
+
+    ``COLORTERM=truecolor`` (or ``24bit``) is the standard advertisement;
+    modern Windows consoles support truecolor without setting it. Anything
+    else gets the 256-color palette, which virtually every terminal supports.
+
+    Args:
+        environ: Environment to inspect (defaults to ``os.environ``).
+        platform: Platform name to assume (defaults to ``sys.platform``).
+
+    Returns:
+        ``"truecolor"`` or ``"256"``.
+    """
+    environ = os.environ if environ is None else environ
+    platform = sys.platform if platform is None else platform
+    if environ.get("COLORTERM", "").strip().lower() in ("truecolor", "24bit"):
+        return "truecolor"
+    if platform == "win32":
+        return "truecolor"
+    return "256"
+
+
+def get_color_mode() -> ColorMode:
+    """Return the active color mode, detecting it on first use."""
+    global _color_mode
+    if _color_mode is None:
+        _color_mode = detect_color_mode()
+    return _color_mode
+
+
+def set_color_mode(mode: ColorMode | None) -> None:
+    """Force a color mode, or pass ``None`` to go back to auto-detection.
+
+    Applications that already know the terminal's capabilities can pass them
+    on here so termflow agrees with the rest of their output.
+
+    Raises:
+        ValueError: If ``mode`` is not ``"truecolor"``, ``"256"`` or ``None``.
+    """
+    global _color_mode
+    if mode is not None and mode not in _COLOR_MODES:
+        raise ValueError(f"color mode must be one of {_COLOR_MODES} or None, not {mode!r}")
+    _color_mode = mode
+
+
+def rgb_to_ansi256(r: int, g: int, b: int) -> int:
+    """Return the closest xterm 256-color index (16-255) for an RGB color.
+
+    Picks whichever of the 6x6x6 color cube and the 24-step greyscale ramp
+    is nearer, the same approach tmux uses.
+
+    Example:
+        >>> rgb_to_ansi256(255, 0, 0)
+        196
+        >>> rgb_to_ansi256(128, 128, 128)
+        244
+    """
+
+    def cube_index(value: int) -> int:
+        if value < 48:
+            return 0
+        if value < 115:
+            return 1
+        return (value - 35) // 40
+
+    def distance(first: tuple[int, int, int], second: tuple[int, int, int]) -> int:
+        return sum((a - b) ** 2 for a, b in zip(first, second, strict=True))
+
+    rgb = (r, g, b)
+    red, green, blue = (cube_index(value) for value in rgb)
+    cube_rgb = (_CUBE_LEVELS[red], _CUBE_LEVELS[green], _CUBE_LEVELS[blue])
+    cube_color = 16 + 36 * red + 6 * green + blue
+
+    average = sum(rgb) // 3
+    grey_index = 23 if average > 238 else max(0, (average - 3) // 10)
+    grey_level = 8 + 10 * grey_index
+    grey_rgb = (grey_level, grey_level, grey_level)
+
+    if distance(grey_rgb, rgb) < distance(cube_rgb, rgb):
+        return 232 + grey_index
+    return cube_color
+
+
+def _color_sequence(hex_color: str, plane: int) -> str:
+    """Build an SGR color sequence; ``plane`` is 38 (foreground) or 48 (background)."""
+    rgb = hex2rgb(hex_color)
+    if rgb is None:
+        return ""
+    if get_color_mode() == "256":
+        return f"\x1b[{plane};5;{rgb_to_ansi256(*rgb)}m"
+    r, g, b = rgb
+    return f"\x1b[{plane};2;{r};{g};{b}m"
 
 
 def hex2rgb(hex_color: str) -> tuple[int, int, int] | None:
@@ -115,7 +228,8 @@ def hsv_to_rgb(h: float, s: float, v: float) -> tuple[int, int, int]:
 def fg_color(hex_color: str) -> str:
     """Generate foreground ANSI escape sequence from hex color.
 
-    Uses 24-bit truecolor ANSI escape codes (\x1b[38;2;R;G;Bm).
+    Uses 24-bit truecolor ANSI escape codes (\x1b[38;2;R;G;Bm), or the
+    nearest 256-color code (\x1b[38;5;Nm) when the color mode is ``"256"``.
 
     Args:
         hex_color: Hex color string (#RRGGBB or RRGGBB).
@@ -129,17 +243,14 @@ def fg_color(hex_color: str) -> str:
         >>> fg_color("invalid")
         ''
     """
-    rgb = hex2rgb(hex_color)
-    if rgb is None:
-        return ""
-    r, g, b = rgb
-    return f"\x1b[38;2;{r};{g};{b}m"
+    return _color_sequence(hex_color, 38)
 
 
 def bg_color(hex_color: str) -> str:
     """Generate background ANSI escape sequence from hex color.
 
-    Uses 24-bit truecolor ANSI escape codes (\x1b[48;2;R;G;Bm).
+    Uses 24-bit truecolor ANSI escape codes (\x1b[48;2;R;G;Bm), or the
+    nearest 256-color code (\x1b[48;5;Nm) when the color mode is ``"256"``.
 
     Args:
         hex_color: Hex color string (#RRGGBB or RRGGBB).
@@ -153,8 +264,4 @@ def bg_color(hex_color: str) -> str:
         >>> bg_color("invalid")
         ''
     """
-    rgb = hex2rgb(hex_color)
-    if rgb is None:
-        return ""
-    r, g, b = rgb
-    return f"\x1b[48;2;{r};{g};{b}m"
+    return _color_sequence(hex_color, 48)

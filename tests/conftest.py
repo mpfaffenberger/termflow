@@ -4,9 +4,21 @@ from io import StringIO
 
 import pytest
 
+from termflow.ansi import set_color_mode
 from termflow.parser import Parser
 from termflow.render import Renderer, RenderFeatures, RenderStyle
 from termflow.syntax import Highlighter
+
+
+@pytest.fixture(autouse=True)
+def truecolor_mode():
+    """Pin truecolor so output doesn't depend on the developer's terminal.
+
+    Tests that exercise the 256-color fallback switch modes explicitly.
+    """
+    set_color_mode("truecolor")
+    yield
+    set_color_mode(None)
 
 
 @pytest.fixture

@@ -5,6 +5,32 @@ All notable changes to termflow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Colors no longer garble terminals without truecolor support, such as macOS
+  Terminal.app. Those terminals read each number of `ESC[38;2;R;G;Bm` as its
+  own SGR code, so RGB components like 104 or 106 painted bright blue or cyan
+  backgrounds behind code blocks. `fg_color` / `bg_color` now emit the nearest
+  256-color code unless the terminal advertises truecolor, and `Highlighter`
+  picks its Pygments formatter the same way.
+
+### Added
+
+- `detect_color_mode`, `get_color_mode` and `set_color_mode` in
+  `termflow.ansi`. Detection matches Rich: truecolor when `COLORTERM` is
+  `truecolor` or `24bit`, or on Windows; 256 colors otherwise.
+  `set_color_mode` lets applications that already know the terminal's
+  capabilities pass them on.
+- `rgb_to_ansi256` for mapping an RGB color to the nearest xterm 256-color
+  index.
+
+### Changed
+
+- `Highlighter`'s `true_color` argument now defaults to `None`, meaning follow
+  the detected color mode. Passing `True` or `False` behaves as before.
+
 ## [1.0.0] - 2026-10-02
 
 ### Added

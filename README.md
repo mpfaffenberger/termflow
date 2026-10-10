@@ -41,6 +41,9 @@ no Rich.
   `tf --doom-shareware` plays the real DOOM
 - **OSC 8 hyperlinks** and **OSC 52 clipboard** integration where the
   terminal supports them
+- **Color fallback** — 24-bit color where the terminal advertises it
+  (`COLORTERM=truecolor`), the nearest 256-color codes elsewhere; override
+  with `termflow.ansi.set_color_mode()`
 - **Configurable** via TOML config file or programmatic API
 
 ## Installation

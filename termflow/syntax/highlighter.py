@@ -16,6 +16,8 @@ from pygments.lexers import TextLexer, get_lexer_by_name, guess_lexer
 from pygments.styles import get_all_styles, get_style_by_name
 from pygments.util import ClassNotFound
 
+from termflow.ansi.color import get_color_mode
+
 # =============================================================================
 # Language Aliases
 # =============================================================================
@@ -233,15 +235,16 @@ class Highlighter:
         ...     print(highlighter.highlight_line(line, "rust"))
     """
 
-    def __init__(self, style: str = "monokai", true_color: bool = True) -> None:
+    def __init__(self, style: str = "monokai", true_color: bool | None = None) -> None:
         """Initialize the highlighter.
 
         Args:
             style: Pygments style name (monokai, native, vim, dracula, etc.)
-            true_color: Use 24-bit true-color (vs 256-color fallback)
+            true_color: Use 24-bit true-color (vs 256-color fallback). ``None``
+                follows the terminal's color mode (see ``get_color_mode``).
         """
         self.style_name = style
-        self.true_color = true_color
+        self.true_color = get_color_mode() == "truecolor" if true_color is None else true_color
         self._formatter = self._create_formatter()
         self._lexer_cache: dict[str, object] = {}
 
