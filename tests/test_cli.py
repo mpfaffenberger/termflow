@@ -35,6 +35,15 @@ class TestRenderFile:
         assert "word59" in visible(capsys.readouterr().out)
 
 
+class TestWidthValidation:
+    @pytest.mark.parametrize("width", ["-5", "0"])
+    def test_non_positive_width_is_a_usage_error(self, doc, capsys, width):
+        with pytest.raises(SystemExit) as excinfo:
+            cli.main([str(doc), "--width", width])
+        assert excinfo.value.code == 2
+        assert "width" in capsys.readouterr().err
+
+
 class TestPageRender:
     def test_builds_a_reflowing_markdown_pager(self, doc, monkeypatch):
         opened: list[Pager] = []
