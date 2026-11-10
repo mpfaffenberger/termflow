@@ -31,6 +31,17 @@ from termflow.render import Renderer, RenderStyle
 from termflow.syntax import Highlighter
 
 
+def _positive_int(value: str) -> int:
+    """Parse a positive integer CLI value (for ``--width``)."""
+    try:
+        width = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid width: {value!r} (must be a positive integer)")
+    if width <= 0:
+        raise argparse.ArgumentTypeError(f"invalid width: {value!r} (must be a positive integer)")
+    return width
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser.
 
@@ -62,10 +73,10 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-w",
         "--width",
-        type=int,
+        type=_positive_int,
         default=None,
         metavar="N",
-        help="Fixed width (default: follow the terminal, including resizes)",
+        help="Fixed positive width (default: follow the terminal, including resizes)",
     )
 
     parser.add_argument(
